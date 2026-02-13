@@ -1,0 +1,73 @@
+name: Common Fly.io Workflow
+
+on:
+    workflow_call:
+        inputs:
+            bootstrap:
+                type: boolean
+                default: false
+
+jobs:
+    deploy:
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v4
+            - uses: ./.github/actions/fly-setup
+              with:
+                  fly-api-token: ${{ secrets.FLY_API_TOKEN }}
+
+
+            - name: Check app exists
+              if: ${{ !inputs.bootstrap }}
+              run: |
+                  flyctl apps list -j | jq -e --arg name "$FLY_APP_NAME" '.[] | select(.Name == $name)' > /dev/null || \
+                    { echo "App '$FLY_APP_NAME' not found. Run the bootstrap workflow first."; exit 1; }
+
+            - name: Load mounts
+              id: mounts
+              run: |
+                  test -f fly.json || { echo "Missing fly.json"; exit 1; }
+                  echo "json=$(jq -c '.mounts // []' fly.json)" >> $GITHUB_OUTPUT
+
+            - name: Provision Resources
+              if: inputs.bootstrap
+              run: |
+                  flyctl apps create "$FLY_APP_NAME" --org "$FLY_ORG" || true
+                  echo '${{ steps.mounts.outputs.json }}' | jq -r '.[] | .source' | while read vol; do
+                    flyctl volumes list -a "$FLY_APP_NAME" -j | jq -e --arg v "$vol" '.[] | select(.name == $v)' > /dev/null || \
+                      flyctl volumes create "$vol" --region "$FLY_PRIMARY_REGION" -a "$FLY_APP_NAME" -y
+                  done
+
+            - name: Migrate region if changed
+              if: ${{ !inputs.bootstrap }}
+              run: |
+                  migrate_machine() {
+                    local old_id=$1 mounts=$2
+                    local volumes=$(flyctl volumes list -a "$FLY_APP_NAME" -j | jq -c --arg m "$old_id" --arg r "$FLY_PRIMARY_REGION" '[.[] | select(.attached_machine_id == $m and .region != $r)]')
+
+                    if [ "$(echo "$volumes" | jq 'length')" -gt 0 ]; then
+                      echo "$volumes" | jq -c '.[]' | while read vol; do
+                        local vol_id=$(echo "$vol" | jq -r .id)
+                        local new_id=$(flyctl volumes fork "$vol_id" -r "$FLY_PRIMARY_REGION" -a "$FLY_APP_NAME" -j | jq -r .id)
+                        until [ "$(flyctl volumes list -a "$FLY_APP_NAME" -j | jq -r --arg id "$new_id" '.[] | select(.id == $id) | .state')" = "created" ]; do sleep 10; done
+                        local vol_name=$(echo "$vol" | jq -r .name)
+                        local mount=$(echo "$mounts" | jq -r --arg s "$vol_name" '.[] | select(.source == $s) | .destination')
+                        echo "--attach-volume $new_id:$mount"
+                      done | xargs flyctl machine clone $old_id -r "$FLY_PRIMARY_REGION" -a "$FLY_APP_NAME"
+                    else
+                      flyctl machine clone $old_id -r "$FLY_PRIMARY_REGION" -a "$FLY_APP_NAME"
+                    fi
+
+                    flyctl machine stop $old_id -a "$FLY_APP_NAME"
+                  }
+
+                  flyctl machine list -a "$FLY_APP_NAME" -j | jq -r --arg r "$FLY_PRIMARY_REGION" '.[] | select(.region != $r) | .id' | \
+                    while read id; do migrate_machine "$id" '${{ steps.mounts.outputs.json }}'; done
+
+            - name: Pull and deploy image
+              run: |
+                  IMAGE=$(jq -r '.build.image' fly.json)
+                  test -n "$IMAGE" || { echo "Missing .build.image in fly.json"; exit 1; }
+                  docker pull "$IMAGE" && docker image inspect "$IMAGE"
+                  flyctl deploy -a "$FLY_APP_NAME" --config fly.json --local-only --image "$IMAGE" --no-cache --debug --verbose

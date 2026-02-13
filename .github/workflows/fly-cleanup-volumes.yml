@@ -1,0 +1,38 @@
+name: Cleanup Unattached Volumes
+
+on:
+    workflow_dispatch:
+
+jobs:
+    cleanup:
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v4
+            - uses: ./.github/actions/fly-setup
+              with:
+                  fly-api-token: ${{ secrets.FLY_API_TOKEN }}
+
+            - name: List and delete unattached volumes
+              run: |
+                  echo "Fetching volumes for app: $FLY_APP_NAME"
+                  VOLUMES=$(flyctl volumes list -a "$FLY_APP_NAME" -j)
+
+                  UNATTACHED=$(echo "$VOLUMES" | jq -r '.[] | select(.attached_machine_id == null or .attached_machine_id == "") | .id')
+
+                  if [ -z "$UNATTACHED" ]; then
+                    echo "No unattached volumes found."
+                    exit 0
+                  fi
+
+                  echo "Found unattached volumes:"
+                  echo "$VOLUMES" | jq '.[] | select(.attached_machine_id == null or .attached_machine_id == "") | {id, name, region, size_gb, created_at}'
+
+                  echo ""
+                  echo "Deleting unattached volumes..."
+                  echo "$UNATTACHED" | while read vol_id; do
+                    echo "Deleting volume: $vol_id"
+                    flyctl volumes destroy "$vol_id" -a "$FLY_APP_NAME" -y
+                  done
+
+                  echo "Cleanup complete."

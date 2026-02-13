@@ -1,0 +1,23 @@
+name: Fly.io Setup
+description: Setup flyctl and load environment configuration
+
+inputs:
+    fly-api-token:
+        description: Fly.io API token
+        required: true
+
+runs:
+    using: composite
+    steps:
+        - uses: superfly/flyctl-actions/setup-flyctl@master
+        - name: Load environment
+          shell: bash
+          run: |
+              echo "FLY_API_TOKEN=${{ inputs.fly-api-token }}" >> $GITHUB_ENV
+              test -f .env && cat .env >> $GITHUB_ENV
+
+              # Validate .env was loaded by checking for required variables
+              source .env
+              test -n "$FLY_APP_NAME" || { echo "Missing FLY_APP_NAME in .env"; exit 1; }
+              test -n "$FLY_ORG" || { echo "Missing FLY_ORG in .env"; exit 1; }
+              test -n "$FLY_PRIMARY_REGION" || { echo "Missing FLY_PRIMARY_REGION in .env"; exit 1; }

@@ -1,0 +1,24 @@
+{
+    "build": {
+        "image": "your-registry/your-image:tag"
+    },
+    "deploy": {
+        "wait_timeout": "10m"
+    },
+    "env": {},
+    "http_service": {
+        "auto_start_machines": true,
+        "auto_stop_machines": "suspend",
+        "force_https": true,
+        "internal_port": 8080,
+        "min_machines_running": 0
+    },
+    "kill_timeout": 20,
+    "mounts": [],
+    "vm": [
+        {
+            "memory": "1gb",
+            "size": "shared-cpu-1x"
+        }
+    ]
+}
