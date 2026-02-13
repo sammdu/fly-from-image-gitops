@@ -13,11 +13,21 @@ runs:
         - name: Load environment
           shell: bash
           run: |
-              echo "FLY_API_TOKEN=${{ inputs.fly-api-token }}" >> $GITHUB_ENV
-              test -f .env && cat .env >> $GITHUB_ENV
+              set -euo pipefail
 
-              # Validate .env was loaded by checking for required variables
               source .env
-              test -n "$FLY_APP_NAME" || { echo "Missing FLY_APP_NAME in .env"; exit 1; }
+              FLY_API_TOKEN="${{ inputs.fly-api-token }}"
+              FLY_APP_NAME=$(jq -r .app fly.json)
+              FLY_PRIMARY_REGION=$(jq -r .primary_region fly.json)
+
+              test -n "$FLY_API_TOKEN" || { echo "Missing fly-api-token"; exit 1; }
               test -n "$FLY_ORG" || { echo "Missing FLY_ORG in .env"; exit 1; }
-              test -n "$FLY_PRIMARY_REGION" || { echo "Missing FLY_PRIMARY_REGION in .env"; exit 1; }
+              test -n "$FLY_APP_NAME" || { echo "Missing .app in fly.json"; exit 1; }
+              test -n "$FLY_PRIMARY_REGION" || { echo "Missing .primary_region in fly.json"; exit 1; }
+
+              cat >> $GITHUB_ENV <<EOF
+              FLY_API_TOKEN=$FLY_API_TOKEN
+              FLY_ORG=$FLY_ORG
+              FLY_APP_NAME=$FLY_APP_NAME
+              FLY_PRIMARY_REGION=$FLY_PRIMARY_REGION
+              EOF

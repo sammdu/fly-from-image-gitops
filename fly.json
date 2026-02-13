@@ -1,4 +1,6 @@
 {
+    "app": "your-app-name",
+    "primary_region": "xxx",
     "build": {
         "image": "your-registry/your-image:tag"
     },
@@ -14,7 +16,12 @@
         "min_machines_running": 0
     },
     "kill_timeout": 20,
-    "mounts": [],
+    "mounts": [
+        {
+            "destination": "/app/data",
+            "source": "app_data"
+        }
+    ],
     "vm": [
         {
             "memory": "1gb",

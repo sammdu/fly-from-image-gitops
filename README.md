@@ -6,53 +6,40 @@ Template for deploying Docker images to [Fly.io](https://fly.io) using GitHub Ac
 
 1. **Fork/clone this repository**
 
-2. **Configure environment** - Copy `.env.example` to `.env`:
-   ```bash
-   cp .env.example .env
-   ```
-   Edit `.env` with your values:
-   - `FLY_APP_NAME`: Your Fly.io app name
-   - `FLY_ORG`: Your Fly.io organization slug
-   - `FLY_PRIMARY_REGION`: [Region code](https://fly.io/docs/reference/regions/) (e.g., `iad`, `lhr`, `syd`)
+2. **Configure** - Edit these files:
+   - **`fly.json`**: Set `app` name, `primary_region` ([region code](https://fly.io/docs/reference/regions/)), `build.image`, and `http_service.internal_port`
+   - **`.env`**: Set `FLY_ORG` to your Fly.io organization slug
+   - **`.github/workflows/fly-set-secrets.yml`**: Add your app secrets (if needed)
 
-3. **Configure app** - Edit `fly.json`:
-   - Set `build.image` to your Docker image (e.g., `registry.hub.docker.com/user/image:tag`)
-   - Configure `env` with environment variables your app needs
-   - Set `http_service.internal_port` to match your container's exposed port
-   - Add `mounts` if you need persistent storage (optional)
-
-4. **Add GitHub Secret** - In your repo settings, add:
+3. **Add GitHub Secret** - In repo settings (Settings > Secrets > Actions):
    - `FLY_API_TOKEN`: Generate at [fly.io/user/personal_access_tokens](https://fly.io/user/personal_access_tokens)
 
-5. **Bootstrap** - Run the "Fly Bootstrap" workflow manually to create the app and provision resources
+4. **Bootstrap & Deploy**:
+   - Run "Fly Bootstrap" workflow manually (creates app & volumes)
+   - Push to `main` to auto-deploy
 
-6. **Deploy** - Push to `main` branch to trigger automatic deployment
+## Configuration
 
-## Workflow Files
-
-- **[fly-deploy.yml](.github/workflows/fly-deploy.yml)**: Triggers on push to `main`
-- **[fly-bootstrap.yml](.github/workflows/fly-bootstrap.yml)**: Manual workflow for initial setup
-- **[fly-cleanup-volumes.yml](.github/workflows/fly-cleanup-volumes.yml)**: Manual workflow to delete unattached volumes
-- **[fly.common.yml](.github/workflows/fly.common.yml)**: Shared deployment logic
-
-## Configuration Reference
-
-### fly.json Options
-
-See [Fly.io configuration reference](https://fly.io/docs/reference/configuration/) for all options. Common settings:
-
-- `build.image`: Docker image to deploy
+### fly.json
+- `app`: App name on Fly.io
+- `primary_region`: 3-letter [region code](https://fly.io/docs/reference/regions/)
+- `build.image`: Docker image (any registry)
 - `env`: Environment variables
-- `http_service`: HTTP service configuration
-- `mounts`: Persistent volume mounts
-- `vm`: VM resources (CPU/memory)
-- `metrics`: Prometheus metrics endpoint (optional)
+- `http_service.internal_port`: Container port
+- `mounts`: Persistent volumes (optional)
+  - Volume names: lowercase, numbers, underscores only (max 30 chars)
+  - Use `app_data` not `app-data`
 
-### .env Variables
+See [Fly.io config reference](https://fly.io/docs/reference/configuration/) for all options.
 
-- `FLY_APP_NAME`: App identifier on Fly.io
-- `FLY_ORG`: Organization for billing and access control
-- `FLY_PRIMARY_REGION`: Deployment region
+### .env
+- `FLY_ORG`: Your Fly.io organization
+
+### Workflows
+- **[fly-deploy.yml](.github/workflows/fly-deploy.yml)**: Auto-deploys on push to `main`
+- **[fly-bootstrap.yml](.github/workflows/fly-bootstrap.yml)**: Manual initial setup
+- **[fly-set-secrets.yml](.github/workflows/fly-set-secrets.yml)**: Secrets deployment (customize as needed)
+- **[fly-cleanup-volumes.yml](.github/workflows/fly-cleanup-volumes.yml)**: Delete unattached volumes
 
 ## Features
 

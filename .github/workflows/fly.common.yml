@@ -24,10 +24,14 @@ jobs:
                   flyctl apps list -j | jq -e --arg name "$FLY_APP_NAME" '.[] | select(.Name == $name)' > /dev/null || \
                     { echo "App '$FLY_APP_NAME' not found. Run the bootstrap workflow first."; exit 1; }
 
+            - name: Validate configuration
+              run: |
+                  test -f fly.json || { echo "ERROR: Missing fly.json"; exit 1; }
+                  test -n "$FLY_API_TOKEN" || { echo "ERROR: FLY_API_TOKEN not set"; exit 1; }
+
             - name: Load mounts
               id: mounts
               run: |
-                  test -f fly.json || { echo "Missing fly.json"; exit 1; }
                   echo "json=$(jq -c '.mounts // []' fly.json)" >> $GITHUB_OUTPUT
 
             - name: Provision Resources

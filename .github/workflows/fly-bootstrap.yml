@@ -10,3 +10,8 @@ jobs:
         with:
             bootstrap: true
         secrets: inherit
+
+    set-secrets:
+        needs: bootstrap
+        uses: ./.github/workflows/fly-set-secrets.yml
+        secrets: inherit
