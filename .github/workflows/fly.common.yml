@@ -82,11 +82,13 @@ jobs:
 
             - name: Deploy
               run: |
-                  IMAGE="${{ inputs.image }}"
-                  [ -z "$IMAGE" ] && IMAGE=$(jq -r '.build.image // empty' fly.json)
-                  if [ -n "$IMAGE" ]; then
-                    docker pull "$IMAGE"
-                    flyctl deploy --app "$FLY_APP_NAME" --config fly.json --image "$IMAGE" --local-only --yes --debug --verbose
+                  OVERRIDE_IMAGE="${{ inputs.image }}"
+                  BUILD_IMAGE=$(jq -r '.build.image // empty' fly.json)
+                  if [ -n "$OVERRIDE_IMAGE" ]; then
+                    flyctl deploy --app "$FLY_APP_NAME" --config fly.json --image "$OVERRIDE_IMAGE" --yes --debug --verbose
+                  elif [ -n "$BUILD_IMAGE" ]; then
+                    docker pull "$BUILD_IMAGE"
+                    flyctl deploy --app "$FLY_APP_NAME" --config fly.json --image "$BUILD_IMAGE" --local-only --yes --debug --verbose
                   else
                     flyctl deploy --app "$FLY_APP_NAME" --config fly.json --yes --debug --verbose
                   fi
