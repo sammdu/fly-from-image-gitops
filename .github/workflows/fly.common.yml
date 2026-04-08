@@ -84,7 +84,12 @@ jobs:
               run: |
                   IMAGE="${{ inputs.image }}"
                   [ -z "$IMAGE" ] && IMAGE=$(jq -r '.build.image // empty' fly.json)
-                  flyctl deploy --app "$FLY_APP_NAME" --config fly.json --image "$IMAGE" --yes --debug --verbose
+                  if [ -n "$IMAGE" ]; then
+                    docker pull "$IMAGE"
+                    flyctl deploy --app "$FLY_APP_NAME" --config fly.json --image "$IMAGE" --local-only --yes --debug --verbose
+                  else
+                    flyctl deploy --app "$FLY_APP_NAME" --config fly.json --yes --debug --verbose
+                  fi
 
             - name: Reconcile machine instances for .experimental.machine_config
               if: ${{ !inputs.bootstrap }}

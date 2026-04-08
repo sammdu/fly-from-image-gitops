@@ -8,7 +8,7 @@ Template for deploying Docker images to [Fly.io](https://fly.io) using GitHub Ac
 
 2. **Configure** - Edit these files:
    - **`fly.json`**: Set `app` name, `primary_region` ([region code](https://fly.io/docs/reference/regions/)), `build.image`, and `http_service.internal_port`
-   - **`.env`**: Set `FLY_ORG` to your Fly.io organization slug
+   - **`.github/actions/fly-setup/action.yml`**: Set `FLY_ORG` to your Fly.io organization slug
    - **`.github/workflows/fly-set-secrets.yml`**: Add your app secrets (if needed)
 
 3. **Add GitHub Secret** - In repo settings (Settings > Secrets > Actions):
@@ -16,14 +16,14 @@ Template for deploying Docker images to [Fly.io](https://fly.io) using GitHub Ac
 
 4. **Bootstrap & Deploy**:
    - Run "Fly Bootstrap" workflow manually (creates app & volumes)
-   - Push to `main` to auto-deploy
+   - In `.github/workflows/fly-deploy.yml`, set `AUTO_RUN_ON_PUSH` to `"true"` to enable auto-deploy on push to `main`
 
 ## Configuration
 
 ### fly.json
 - `app`: App name on Fly.io
 - `primary_region`: 3-letter [region code](https://fly.io/docs/reference/regions/)
-- `build.image`: Docker image (any registry)
+- `build.image`: Docker image (any registry); when set, image is pulled locally and deployed with `--local-only`
 - `env`: Environment variables
 - `http_service.internal_port`: Container port
 - `mounts`: Persistent volumes (optional)
@@ -32,11 +32,11 @@ Template for deploying Docker images to [Fly.io](https://fly.io) using GitHub Ac
 
 See [Fly.io config reference](https://fly.io/docs/reference/configuration/) for all options.
 
-### .env
-- `FLY_ORG`: Your Fly.io organization
+### fly-setup action
+`FLY_ORG` is set directly in `.github/actions/fly-setup/action.yml`. `FLY_APP_NAME` and `FLY_PRIMARY_REGION` are read from `fly.json`.
 
 ### Workflows
-- **[fly-deploy.yml](.github/workflows/fly-deploy.yml)**: Auto-deploys on push to `main`
+- **[fly-deploy.yml](.github/workflows/fly-deploy.yml)**: Auto-deploys on push to `main` (set `AUTO_RUN_ON_PUSH: "true"` to enable)
 - **[fly-bootstrap.yml](.github/workflows/fly-bootstrap.yml)**: Manual initial setup
 - **[fly-set-secrets.yml](.github/workflows/fly-set-secrets.yml)**: Secrets deployment (customize as needed)
 - **[fly-cleanup-volumes.yml](.github/workflows/fly-cleanup-volumes.yml)**: Delete unattached volumes

@@ -3,8 +3,12 @@ on:
     push:
         branches: [main]
 
+env:
+    AUTO_RUN_ON_PUSH: "false" # REMOVE_ME: set to "true" to enable automatic deployments on push
+
 jobs:
     set-secrets:
+        if: ${{ env.AUTO_RUN_ON_PUSH == 'true' }}
         uses: ./.github/workflows/fly-set-secrets.yml
         with:
             stageBeforeDeploy: true
@@ -12,6 +16,7 @@ jobs:
 
     deploy:
         needs: set-secrets
+        if: ${{ env.AUTO_RUN_ON_PUSH == 'true' }}
         uses: ./.github/workflows/fly.common.yml
         with:
             bootstrap: false
