@@ -6,6 +6,9 @@ on:
             bootstrap:
                 type: boolean
                 default: false
+            image:
+                description: Image reference to deploy; reads fly.json .build.image when omitted
+                type: string
 
 jobs:
     deploy:
@@ -17,61 +20,83 @@ jobs:
               with:
                   fly-api-token: ${{ secrets.FLY_API_TOKEN }}
 
-
             - name: Check app exists
               if: ${{ !inputs.bootstrap }}
               run: |
-                  flyctl apps list -j | jq -e --arg name "$FLY_APP_NAME" '.[] | select(.Name == $name)' > /dev/null || \
-                    { echo "App '$FLY_APP_NAME' not found. Run the bootstrap workflow first."; exit 1; }
-
-            - name: Validate configuration
-              run: |
-                  test -f fly.json || { echo "ERROR: Missing fly.json"; exit 1; }
-                  test -n "$FLY_API_TOKEN" || { echo "ERROR: FLY_API_TOKEN not set"; exit 1; }
-
-            - name: Load mounts
-              id: mounts
-              run: |
-                  echo "json=$(jq -c '.mounts // []' fly.json)" >> $GITHUB_OUTPUT
+                  APP_EXISTS=$(flyctl apps list --json | jq -r --arg name "$FLY_APP_NAME" '.[] | select(.Name == $name) | .Name')
+                  if [ -z "$APP_EXISTS" ]; then
+                    echo "App '$FLY_APP_NAME' not found. Run the bootstrap workflow first."
+                    exit 1
+                  fi
 
             - name: Provision Resources
               if: inputs.bootstrap
               run: |
-                  flyctl apps create "$FLY_APP_NAME" --org "$FLY_ORG" || true
-                  echo '${{ steps.mounts.outputs.json }}' | jq -r '.[] | .source' | while read vol; do
-                    flyctl volumes list -a "$FLY_APP_NAME" -j | jq -e --arg v "$vol" '.[] | select(.name == $v)' > /dev/null || \
-                      flyctl volumes create "$vol" --region "$FLY_PRIMARY_REGION" -a "$FLY_APP_NAME" -y
+                  MOUNTS=$(jq -c '.mounts // []' fly.json)
+                  APP_EXISTS=$(flyctl apps list --json | jq -r --arg name "$FLY_APP_NAME" '.[] | select(.Name == $name) | .Name')
+                  [ -z "$APP_EXISTS" ] && flyctl apps create "$FLY_APP_NAME" --org "$FLY_ORG" --verbose
+                  echo "$MOUNTS" | jq -r '.[] | .source' | while read vol; do
+                    VOL_EXISTS=$(flyctl volumes list --app "$FLY_APP_NAME" --json | jq -r --arg v "$vol" '.[] | select(.name == $v) | .id')
+                    [ -z "$VOL_EXISTS" ] && flyctl volumes create "$vol" --region "$FLY_PRIMARY_REGION" --app "$FLY_APP_NAME" --yes --verbose
                   done
 
             - name: Migrate region if changed
               if: ${{ !inputs.bootstrap }}
               run: |
+                  MOUNTS=$(jq -c '.mounts // []' fly.json)
                   migrate_machine() {
                     local old_id=$1 mounts=$2
-                    local volumes=$(flyctl volumes list -a "$FLY_APP_NAME" -j | jq -c --arg m "$old_id" --arg r "$FLY_PRIMARY_REGION" '[.[] | select(.attached_machine_id == $m and .region != $r)]')
+                    local volumes=$(flyctl volumes list --app "$FLY_APP_NAME" --json | jq -c --arg m "$old_id" --arg r "$FLY_PRIMARY_REGION" '[.[] | select(.attached_machine_id == $m and .region != $r)]')
 
                     if [ "$(echo "$volumes" | jq 'length')" -gt 0 ]; then
                       echo "$volumes" | jq -c '.[]' | while read vol; do
                         local vol_id=$(echo "$vol" | jq -r .id)
-                        local new_id=$(flyctl volumes fork "$vol_id" -r "$FLY_PRIMARY_REGION" -a "$FLY_APP_NAME" -j | jq -r .id)
-                        until [ "$(flyctl volumes list -a "$FLY_APP_NAME" -j | jq -r --arg id "$new_id" '.[] | select(.id == $id) | .state')" = "created" ]; do sleep 10; done
+                        local new_id=$(flyctl volumes fork "$vol_id" --region "$FLY_PRIMARY_REGION" --app "$FLY_APP_NAME" --json | jq -r .id)
+                        until [ "$(flyctl volumes list --app "$FLY_APP_NAME" --json | jq -r --arg id "$new_id" '.[] | select(.id == $id) | .state')" = "created" ]; do sleep 10; done
                         local vol_name=$(echo "$vol" | jq -r .name)
                         local mount=$(echo "$mounts" | jq -r --arg s "$vol_name" '.[] | select(.source == $s) | .destination')
                         echo "--attach-volume $new_id:$mount"
-                      done | xargs flyctl machine clone $old_id -r "$FLY_PRIMARY_REGION" -a "$FLY_APP_NAME"
+                      done | xargs flyctl machine clone "$old_id" --region "$FLY_PRIMARY_REGION" --app "$FLY_APP_NAME" --verbose
                     else
-                      flyctl machine clone $old_id -r "$FLY_PRIMARY_REGION" -a "$FLY_APP_NAME"
+                      flyctl machine clone "$old_id" --region "$FLY_PRIMARY_REGION" --app "$FLY_APP_NAME" --verbose
                     fi
 
-                    flyctl machine stop $old_id -a "$FLY_APP_NAME"
+                    flyctl machine stop "$old_id" --app "$FLY_APP_NAME" --verbose
                   }
 
-                  flyctl machine list -a "$FLY_APP_NAME" -j | jq -r --arg r "$FLY_PRIMARY_REGION" '.[] | select(.region != $r) | .id' | \
-                    while read id; do migrate_machine "$id" '${{ steps.mounts.outputs.json }}'; done
+                  flyctl machine list --app "$FLY_APP_NAME" --json | jq -r --arg r "$FLY_PRIMARY_REGION" '.[] | select(.region != $r) | .id' | \
+                    while read id; do migrate_machine "$id" "$MOUNTS"; done
 
-            - name: Pull and deploy image
+            - name: Backup and remove orphaned volumes
+              if: ${{ !inputs.bootstrap }}
               run: |
-                  IMAGE=$(jq -r '.build.image' fly.json)
-                  test -n "$IMAGE" || { echo "Missing .build.image in fly.json"; exit 1; }
-                  docker pull "$IMAGE" && docker image inspect "$IMAGE"
-                  flyctl deploy -a "$FLY_APP_NAME" --config fly.json --local-only --image "$IMAGE" --no-cache --debug --verbose
+                  MOUNTS=$(jq -c '.mounts // []' fly.json)
+                  configured=$(echo "$MOUNTS" | jq -r '.[].source')
+                  flyctl volumes list --app "$FLY_APP_NAME" --json | jq -r '.[] | select(.attached_machine_id) | "\(.id)|\(.name)|\(.attached_machine_id)"' | while IFS='|' read vol_id vol_name machine_id; do
+                    echo "$configured" | grep -qx "$vol_name" && continue
+
+                    flyctl volumes snapshots create "$vol_id" --app "$FLY_APP_NAME" --verbose
+                    flyctl machine destroy "$machine_id" --app "$FLY_APP_NAME" --force --verbose
+                    flyctl volumes destroy "$vol_id" --app "$FLY_APP_NAME" --yes --verbose
+                  done
+
+            - name: Deploy
+              run: |
+                  IMAGE="${{ inputs.image }}"
+                  [ -z "$IMAGE" ] && IMAGE=$(jq -r '.build.image // empty' fly.json)
+                  flyctl deploy --app "$FLY_APP_NAME" --config fly.json --image "$IMAGE" --yes --debug --verbose
+
+            - name: Reconcile machine instances for .experimental.machine_config
+              if: ${{ !inputs.bootstrap }}
+              run: |
+                  machine_config=$(jq -r '.experimental.machine_config // empty' fly.json)
+                  [ -z "$machine_config" ] && exit 0
+
+                  # Keep the oldest active machine; destroy all others (replaced versions + duplicates)
+                  KEEP=$(flyctl machine list --app "$FLY_APP_NAME" --json | \
+                    jq -r '[.[] | select(.state != "replaced")] | sort_by(.created_at) | first | .id // empty')
+                  [ -z "$KEEP" ] && exit 0
+
+                  flyctl machine list --app "$FLY_APP_NAME" --json | \
+                    jq -r --arg k "$KEEP" '.[] | select(.id != $k) | .id' | \
+                    xargs -r flyctl machine destroy --app "$FLY_APP_NAME" --force --verbose

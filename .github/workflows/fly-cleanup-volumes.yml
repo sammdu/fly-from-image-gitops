@@ -16,7 +16,7 @@ jobs:
             - name: List and delete unattached volumes
               run: |
                   echo "Fetching volumes for app: $FLY_APP_NAME"
-                  VOLUMES=$(flyctl volumes list -a "$FLY_APP_NAME" -j)
+                  VOLUMES=$(flyctl volumes list --app "$FLY_APP_NAME" --json)
 
                   UNATTACHED=$(echo "$VOLUMES" | jq -r '.[] | select(.attached_machine_id == null or .attached_machine_id == "") | .id')
 
@@ -32,7 +32,7 @@ jobs:
                   echo "Deleting unattached volumes..."
                   echo "$UNATTACHED" | while read vol_id; do
                     echo "Deleting volume: $vol_id"
-                    flyctl volumes destroy "$vol_id" -a "$FLY_APP_NAME" -y
+                    flyctl volumes destroy "$vol_id" --app "$FLY_APP_NAME" --yes --verbose
                   done
 
                   echo "Cleanup complete."

@@ -14,4 +14,6 @@ jobs:
     set-secrets:
         needs: bootstrap
         uses: ./.github/workflows/fly-set-secrets.yml
+        with:
+            stageBeforeDeploy: false
         secrets: inherit

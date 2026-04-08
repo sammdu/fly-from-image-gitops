@@ -4,13 +4,15 @@ on:
         branches: [main]
 
 jobs:
+    set-secrets:
+        uses: ./.github/workflows/fly-set-secrets.yml
+        with:
+            stageBeforeDeploy: true
+        secrets: inherit
+
     deploy:
+        needs: set-secrets
         uses: ./.github/workflows/fly.common.yml
         with:
             bootstrap: false
-        secrets: inherit
-
-    set-secrets:
-        needs: deploy
-        uses: ./.github/workflows/fly-set-secrets.yml
         secrets: inherit
