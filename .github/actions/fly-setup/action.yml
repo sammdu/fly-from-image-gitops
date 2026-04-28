@@ -13,14 +13,28 @@ runs:
         - name: Load environment
           shell: bash
           run: |
-              FLY_ORG="your-org"
               FLY_API_TOKEN="${{ inputs.fly-api-token }}"
-              FLY_APP_NAME=$(jq -r .app fly.json)
-              FLY_PRIMARY_REGION=$(jq -r .primary_region fly.json)
+              FLY_APP_NAME=$(jq -r '.app // ""' fly.json)
+              FLY_PRIMARY_REGION=$(jq -r '.primary_region // ""' fly.json)
 
-              test -n "$FLY_API_TOKEN" || { echo "Missing fly-api-token"; exit 1; }
-              test -n "$FLY_APP_NAME" || { echo "Missing .app in fly.json"; exit 1; }
-              test -n "$FLY_PRIMARY_REGION" || { echo "Missing .primary_region in fly.json"; exit 1; }
+              if [ -z "$FLY_ORG" ]; then
+                  FLY_ORG="personal"
+              fi
+
+              if [ -z "$FLY_API_TOKEN" ]; then
+                  echo "Missing fly-api-token"
+                  exit 1
+              fi
+
+              if [ -z "$FLY_APP_NAME" ]; then
+                  echo "Missing .app in fly.json"
+                  exit 1
+              fi
+
+              if [ -z "$FLY_PRIMARY_REGION" ]; then
+                  echo "Missing .primary_region in fly.json"
+                  exit 1
+              fi
 
               cat >> "$GITHUB_ENV" <<EOF
               FLY_API_TOKEN=$FLY_API_TOKEN

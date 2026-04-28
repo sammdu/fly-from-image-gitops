@@ -1,0 +1,32 @@
+name: Fly.io Deploy
+description: Deploy a Fly.io app from a built image, configured image, or local app config
+
+inputs:
+    image:
+        description: Image reference to deploy
+        required: false
+        default: ""
+
+runs:
+    using: composite
+    steps:
+        - name: Deploy app
+          shell: bash
+          run: |
+              app_exists=$(flyctl apps list --json | jq -r --arg name "$FLY_APP_NAME" '.[] | select(.Name == $name) | .Name')
+              if [ -z "$app_exists" ]; then
+                  echo "App '$FLY_APP_NAME' not found. Run the Fly Bootstrap workflow first."
+                  exit 1
+              fi
+
+              override_image="${{ inputs.image }}"
+              configured_image=$(jq -r '.build.image // empty' fly.json)
+
+              if [ -n "$override_image" ]; then
+                  flyctl deploy --app "$FLY_APP_NAME" --config fly.json --image "$override_image" --yes --debug --verbose
+              elif [ -n "$configured_image" ]; then
+                  docker pull "$configured_image"
+                  flyctl deploy --app "$FLY_APP_NAME" --config fly.json --image "$configured_image" --local-only --yes --debug --verbose
+              else
+                  flyctl deploy --app "$FLY_APP_NAME" --config fly.json --yes --debug --verbose
+              fi

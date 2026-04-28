@@ -1,0 +1,45 @@
+name: Fly.io Sync Secrets
+description: Set explicitly listed Fly.io secrets from this step's environment
+
+inputs:
+    stage:
+        description: Stage secrets without restarting machines
+        required: false
+        default: "true"
+    secret-names:
+        description: Newline-separated environment variable names to set as Fly.io secrets
+        required: false
+        default: ""
+
+runs:
+    using: composite
+    steps:
+        - name: Sync secrets
+          shell: bash
+          env:
+              SECRET_NAMES: ${{ inputs.secret-names }}
+              STAGE_SECRETS: ${{ inputs.stage }}
+          run: |
+              secret_args=()
+              while IFS= read -r name; do
+                  [ -z "$name" ] && continue
+
+                  value=$(printenv "$name"; :)
+                  if [ -z "$value" ]; then
+                      echo "Missing value for secret environment variable: $name"
+                      exit 1
+                  fi
+
+                  secret_args+=("$name=$value")
+              done <<< "$SECRET_NAMES"
+
+              if [ "${#secret_args[@]}" -eq 0 ]; then
+                  echo "No secrets configured."
+                  exit 0
+              fi
+
+              if [ "$STAGE_SECRETS" = "true" ]; then
+                  flyctl secrets set --app "$FLY_APP_NAME" --stage "${secret_args[@]}"
+              else
+                  flyctl secrets set --app "$FLY_APP_NAME" "${secret_args[@]}"
+              fi

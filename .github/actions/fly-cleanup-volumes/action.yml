@@ -1,0 +1,78 @@
+name: Fly.io Cleanup Volumes
+description: List and optionally delete unattached or orphaned Fly.io volumes
+
+inputs:
+    confirm:
+        description: Set to "true" to destroy listed volumes
+        required: false
+        default: "false"
+    orphaned:
+        description: Also snapshot and remove attached volumes no longer declared in fly.json mounts
+        required: false
+        default: "false"
+
+runs:
+    using: composite
+    steps:
+        - name: Cleanup volumes
+          shell: bash
+          env:
+              CONFIRM: ${{ inputs.confirm }}
+              CLEANUP_ORPHANED: ${{ inputs.orphaned }}
+          run: |
+              echo "Fetching volumes for app: $FLY_APP_NAME"
+              volumes=$(flyctl volumes list --app "$FLY_APP_NAME" --json)
+              unattached=$(echo "$volumes" | jq -r '.[] | select(.attached_machine_id == null or .attached_machine_id == "") | .id')
+
+              if [ -n "$unattached" ]; then
+                  echo "Found unattached volumes:"
+                  echo "$volumes" | jq '.[] | select(.attached_machine_id == null or .attached_machine_id == "") | {id, name, region, size_gb, created_at}'
+              else
+                  echo "No unattached volumes found."
+              fi
+
+              if [ "$CONFIRM" = "true" ] && [ -n "$unattached" ]; then
+                  echo "$unattached" | while read -r vol_id; do
+                      [ -z "$vol_id" ] && continue
+                      flyctl volumes destroy "$vol_id" --app "$FLY_APP_NAME" --yes --verbose
+                  done
+              fi
+
+              if [ "$CLEANUP_ORPHANED" != "true" ]; then
+                  [ "$CONFIRM" != "true" ] && echo "Deletion is disabled. Set confirm: \"true\" to destroy listed unattached volumes."
+                  exit 0
+              fi
+
+              mounts=$(jq -c '.mounts // []' fly.json)
+              attached=$(echo "$volumes" | jq -r '.[] | select(.attached_machine_id) | [.id, .name, .attached_machine_id] | @tsv')
+
+              if [ -z "$attached" ]; then
+                  echo "No attached volumes found."
+                  exit 0
+              fi
+
+              found_orphaned=false
+              tab=$(printf '\t')
+              while IFS="$tab" read -r vol_id vol_name machine_id; do
+                  [ -z "$vol_id" ] && continue
+
+                  is_configured=$(echo "$mounts" | jq -r --arg source "$vol_name" 'any(.[]; .source == $source)')
+                  [ "$is_configured" = "true" ] && continue
+
+                  found_orphaned=true
+                  echo "Orphaned attached volume: $vol_name ($vol_id), machine: $machine_id"
+
+                  if [ "$CONFIRM" != "true" ]; then
+                      continue
+                  fi
+
+                  flyctl volumes snapshots create "$vol_id" --app "$FLY_APP_NAME" --verbose
+                  flyctl machine destroy "$machine_id" --app "$FLY_APP_NAME" --force --verbose
+                  flyctl volumes destroy "$vol_id" --app "$FLY_APP_NAME" --yes --verbose
+              done <<< "$attached"
+
+              if [ "$found_orphaned" = "false" ]; then
+                  echo "No orphaned attached volumes found."
+              elif [ "$CONFIRM" != "true" ]; then
+                  echo "Deletion is disabled. Set confirm: \"true\" to snapshot and destroy listed orphaned resources."
+              fi

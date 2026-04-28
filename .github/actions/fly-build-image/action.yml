@@ -1,0 +1,35 @@
+name: Fly.io Build Image
+description: Build and push a deploy image when fly.json declares build.dockerfile
+
+outputs:
+    image:
+        description: Image reference built and pushed for deployment
+        value: ${{ steps.build.outputs.image }}
+
+runs:
+    using: composite
+    steps:
+        - id: build
+          name: Build and push Docker image
+          shell: bash
+          run: |
+              dockerfile=$(jq -r '.build.dockerfile // empty' fly.json)
+              if [ -z "$dockerfile" ]; then
+                  echo "image=" >> "$GITHUB_OUTPUT"
+                  echo "No build.dockerfile configured."
+                  exit 0
+              fi
+
+              context=$(jq -r '.build.context // "."' fly.json)
+              short_sha=$(git rev-parse --short=12 "$GITHUB_SHA")
+              image="registry.fly.io/$FLY_APP_NAME:deploy-$short_sha"
+
+              if [ ! -f "$dockerfile" ]; then
+                  echo "Dockerfile not found: $dockerfile"
+                  exit 1
+              fi
+
+              flyctl auth docker
+              docker build --file "$dockerfile" --tag "$image" "$context"
+              docker push "$image"
+              echo "image=$image" >> "$GITHUB_OUTPUT"

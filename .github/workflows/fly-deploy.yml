@@ -1,23 +1,39 @@
 name: Deploy App
 on:
+    workflow_dispatch:
     push:
         branches: [main]
 
 env:
+    FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    FLY_ORG: personal
     AUTO_RUN_ON_PUSH: "false" # REMOVE_ME: set to "true" to enable automatic deployments on push
 
 jobs:
-    set-secrets:
-        if: ${{ env.AUTO_RUN_ON_PUSH == 'true' }}
-        uses: ./.github/workflows/fly-set-secrets.yml
-        with:
-            stageBeforeDeploy: true
-        secrets: inherit
-
     deploy:
-        needs: set-secrets
-        if: ${{ env.AUTO_RUN_ON_PUSH == 'true' }}
-        uses: ./.github/workflows/fly.common.yml
-        with:
-            bootstrap: false
-        secrets: inherit
+        if: ${{ github.event_name == 'workflow_dispatch' || env.AUTO_RUN_ON_PUSH == 'true' }}
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v4
+            - uses: ./.github/actions/fly-setup
+              with:
+                  fly-api-token: ${{ secrets.FLY_API_TOKEN }}
+            - uses: ./.github/actions/fly-sync-secrets
+              with:
+                  stage: "true"
+            - id: build-image
+              uses: ./.github/actions/fly-build-image
+            - uses: ./.github/actions/fly-deploy
+              with:
+                  image: ${{ steps.build-image.outputs.image }}
+            # Optional: for apps using fly.json experimental.machine_config.
+            # - uses: ./.github/actions/fly-cleanup-machines
+            #   with:
+            #       confirm: "true"
+            # Optional: delete unattached volumes. Set orphaned to "true" to also
+            # snapshot and remove attached volumes no longer declared in fly.json mounts.
+            # - uses: ./.github/actions/fly-cleanup-volumes
+            #   with:
+            #       confirm: "true"
+            #       orphaned: "false"

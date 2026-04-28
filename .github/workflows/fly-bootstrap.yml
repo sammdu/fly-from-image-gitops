@@ -2,18 +2,26 @@ name: Fly Bootstrap
 
 on:
     workflow_dispatch:
-    workflow_call:
+
+env:
+    FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    FLY_ORG: personal
 
 jobs:
     bootstrap:
-        uses: ./.github/workflows/fly.common.yml
-        with:
-            bootstrap: true
-        secrets: inherit
+        runs-on: ubuntu-latest
 
-    set-secrets:
-        needs: bootstrap
-        uses: ./.github/workflows/fly-set-secrets.yml
-        with:
-            stageBeforeDeploy: false
-        secrets: inherit
+        steps:
+            - uses: actions/checkout@v4
+            - uses: ./.github/actions/fly-setup
+              with:
+                  fly-api-token: ${{ secrets.FLY_API_TOKEN }}
+            - uses: ./.github/actions/fly-provision
+            - uses: ./.github/actions/fly-sync-secrets
+              with:
+                  stage: "false"
+            - id: build-image
+              uses: ./.github/actions/fly-build-image
+            - uses: ./.github/actions/fly-deploy
+              with:
+                  image: ${{ steps.build-image.outputs.image }}
