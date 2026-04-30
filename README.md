@@ -2,6 +2,8 @@
 
 Template for deploying a Docker image to [Fly.io](https://fly.io) from GitHub Actions without installing `flyctl` locally.
 
+For LLM agents adapting this template, read [AGENTS.md](AGENTS.md) first. It captures Fly.io deployment reasoning, common pitfalls, and when to verify behavior against current docs.
+
 ## Quick Start
 
 1. Fork or clone this repository.
@@ -17,35 +19,25 @@ Template for deploying a Docker image to [Fly.io](https://fly.io) from GitHub Ac
 
 ## Workflows
 
-- `.github/workflows/fly-bootstrap.yml` creates the Fly app, creates configured volumes, syncs configured secrets, builds an image when needed, and deploys.
-- `.github/workflows/fly-deploy.yml` syncs configured secrets, builds an image when needed, and deploys. Push deploys are disabled until the commented `push` trigger is enabled.
+- `fly-bootstrap.yml`: creates the app, provisions volumes, syncs secrets, builds when needed, deploys, and prints WireGuard access when applicable.
+- `fly-deploy.yml`: syncs secrets, builds when needed, and deploys. Push deploys are disabled until the commented trigger is enabled.
+- `fly-wireguard.yml`: recreates or prints private access config when needed.
 
-The workflows are intentionally thin. Implementation lives in composite actions under `.github/actions/fly-*`.
-
-Bootstrap and deploy create a WireGuard peer named from the app prefix plus short commit hash when no matching app-prefixed peer exists. The recommended config filename is printed as `<peer>.conf`. Run the `Fly WireGuard Config` workflow manually with `recreate=true` to delete matching peers and print a fresh config; set `peer_name` or `match_prefix` to override the defaults.
-
-Optional maintenance actions are included but not active by default. Uncomment the example steps in `fly-deploy.yml` only for apps that need them.
+The workflows stay thin; reusable behavior lives in composite actions under `.github/actions/fly-*`. Optional maintenance steps are commented out in `fly-deploy.yml`.
 
 ## Configuration
 
-Non-secret configuration is committed in this repo:
-
 - `fly.json` is the Fly app config source.
 - `FLY_ORG` defaults to `personal` in `fly-setup`; override it in workflow `env` when needed.
-- `deploy.strategy` is `rolling` with `max_unavailable=1` by default.
-- `enable-ha-with-no-volumes` is set on the `fly-deploy` action; keep it `false` for lowest idle cost, or set it `true` for Fly's default spare Machine behavior.
+- Deploys default to rolling with `max_unavailable=1`.
+- `enable-ha-with-no-volumes` controls whether Fly creates spare Machines for service groups without volumes.
 
 For private apps, set `FLY_ACCESS_MODE` once in the workflow `env`:
 
 - `flycast`: use `.github/actions/fly-private-network` with `allocate: "true"` during bootstrap.
 - `internal`: use `.github/actions/fly-private-network` only to fail if public IPs are attached.
 
-The access URL action auto-detects existing Flycast or public IPs when `FLY_ACCESS_MODE` is not set; otherwise it falls back to `.internal`.
-
-Secrets stay in GitHub Actions secrets:
-
-- `FLY_API_TOKEN` is required.
-- App secrets are optional. Map them once in `.github/workflows/fly-set-secrets.yml`.
+`FLY_API_TOKEN` is required. Map app secrets once in `.github/workflows/fly-set-secrets.yml`.
 
 Example app secret mapping:
 
@@ -79,7 +71,7 @@ Build and push from this repository:
 
 ## Optional Volumes
 
-Add `mounts` to `fly.json` when the app needs persistent storage. The bootstrap workflow creates missing volumes in `primary_region`.
+Add `mounts` to `fly.json` when the app needs persistent storage. Bootstrap creates missing volumes in `primary_region`.
 
 ```json
 "mounts": [
@@ -97,13 +89,11 @@ No default workflow path destroys machines or volumes.
 
 ## Optional Maintenance
 
-The template keeps cleanup components for apps that need them. They are commented out in `fly-deploy.yml` and each destructive action requires `confirm: "true"`.
+Maintenance actions are available but inactive by default. Destructive actions require `confirm: "true"`.
 
 - `fly-scale-processes`: enforces process group Machine counts such as `web=1`; useful after disabling deploy HA for service groups without volumes.
 - `fly-cleanup-volumes`: lists unattached volumes and deletes them when confirmed. Set `orphaned: "true"` to also snapshot and remove attached volumes whose names are no longer declared in `fly.json.mounts`; this also destroys the attached machine.
-- `fly-cleanup-machines`: for apps using `fly.json.experimental.machine_config`, keeps the oldest active machine and removes replaced or duplicate machines.
-
-For a Fly-volume app, keep `fly-provision` and consider `fly-cleanup-volumes`. For a multi-container or machine-config app, consider `fly-cleanup-machines`. Delete unused optional actions from downstream app repos if they are not relevant.
+- `fly-cleanup-machines`: for apps using `fly.json.experimental.machine_config`, removes replaced or duplicate machines.
 
 ## Documentation
 
