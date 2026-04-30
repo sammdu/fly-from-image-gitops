@@ -26,5 +26,16 @@ runs:
                       continue
                   fi
 
-                  flyctl volumes create "$volume" --region "$FLY_PRIMARY_REGION" --app "$FLY_APP_NAME" --yes --verbose
+                  volume_args=("$volume" --region "$FLY_PRIMARY_REGION" --app "$FLY_APP_NAME" --yes --verbose)
+
+                  initial_size=$(printf '%s\n' "$mount" | jq -r '.initial_size // "" | tostring | ascii_downcase | rtrimstr("gb")')
+                  [ -n "$initial_size" ] && volume_args+=(--size "$initial_size")
+
+                  snapshot_retention=$(echo "$mount" | jq -r '.snapshot_retention // empty')
+                  [ -n "$snapshot_retention" ] && volume_args+=(--snapshot-retention "$snapshot_retention")
+
+                  scheduled_snapshots=$(echo "$mount" | jq -r '.scheduled_snapshots // empty')
+                  [ "$scheduled_snapshots" = "false" ] && volume_args+=(--scheduled-snapshots=false)
+
+                  flyctl volumes create "${volume_args[@]}"
               done

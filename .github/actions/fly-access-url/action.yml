@@ -1,0 +1,63 @@
+name: Fly.io Access URL
+description: Infer and print the app access URL
+
+inputs:
+    app-name:
+        description: Fly app name
+        required: false
+        default: ""
+    access-mode:
+        description: public, flycast, or internal
+        required: false
+        default: ""
+
+outputs:
+    url:
+        description: Inferred access URL
+        value: ${{ steps.url.outputs.url }}
+    mode:
+        description: Inferred access mode
+        value: ${{ steps.url.outputs.mode }}
+
+runs:
+    using: composite
+    steps:
+        - id: url
+          name: Print access URL
+          shell: bash
+          env:
+              ACCESS_APP_NAME: ${{ inputs.app-name }}
+              ACCESS_MODE: ${{ inputs.access-mode }}
+          run: |
+              app_name="$ACCESS_APP_NAME"
+              [ -n "$app_name" ] || app_name="$FLY_APP_NAME"
+              [ -n "$app_name" ] || app_name=$(jq -r '.app // empty' fly.json)
+
+              mode="$ACCESS_MODE"
+              [ -n "$mode" ] || mode="$FLY_ACCESS_MODE"
+
+              if [ -z "$mode" ]; then
+                  ips_json=$(flyctl ips list --app "$app_name" --json | tee /dev/stderr)
+                  private_ip=$(printf '%s\n' "$ips_json" | jq -r '.[] | select(((.Type // .type // "") | ascii_downcase) | contains("private")) | (.IP // .ip // empty)' | head -n 1)
+                  public_ip=$(printf '%s\n' "$ips_json" | jq -r '.[] | select(((.Type // .type // "") | ascii_downcase) | contains("public")) | (.IP // .ip // empty)' | head -n 1)
+                  [ -n "$private_ip" ] && mode="flycast"
+                  if [ -z "$mode" ] && [ -n "$public_ip" ]; then
+                      mode="public"
+                  fi
+                  if [ -z "$mode" ] && [ "$FLY_PRIVATE_ONLY" = "true" ]; then
+                      mode="flycast"
+                  fi
+                  [ -n "$mode" ] || mode="internal"
+              fi
+
+              if [ "$mode" = "flycast" ]; then
+                  url="http://$app_name.flycast"
+              elif [ "$mode" = "internal" ]; then
+                  url="http://$app_name.internal"
+              else
+                  url="https://$app_name.fly.dev"
+              fi
+
+              echo "url=$url" >> "$GITHUB_OUTPUT"
+              echo "mode=$mode" >> "$GITHUB_OUTPUT"
+              echo "::notice::Access URL ($mode): $url"

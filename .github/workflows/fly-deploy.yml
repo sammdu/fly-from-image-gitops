@@ -1,32 +1,37 @@
 name: Deploy App
 on:
     workflow_dispatch:
-    push:
-        branches: [main]
-
-env:
-    FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-    FLY_ORG: personal
-    AUTO_RUN_ON_PUSH: "false" # REMOVE_ME: set to "true" to enable automatic deployments on push
+    # Uncomment to deploy on push to main.
+    # push:
+    #     branches: [main]
 
 jobs:
+    set-secrets:
+        uses: ./.github/workflows/fly-set-secrets.yml
+        with:
+            stage: true
+        secrets: inherit
+
     deploy:
-        if: ${{ github.event_name == 'workflow_dispatch' || env.AUTO_RUN_ON_PUSH == 'true' }}
+        needs: set-secrets
         runs-on: ubuntu-latest
 
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
             - uses: ./.github/actions/fly-setup
               with:
                   fly-api-token: ${{ secrets.FLY_API_TOKEN }}
-            - uses: ./.github/actions/fly-sync-secrets
-              with:
-                  stage: "true"
             - id: build-image
               uses: ./.github/actions/fly-build-image
             - uses: ./.github/actions/fly-deploy
               with:
+                  enable-ha-with-no-volumes: "false"
                   image: ${{ steps.build-image.outputs.image }}
+            - uses: ./.github/actions/fly-wireguard-config
+            # Optional: enforce process group Machine counts, for example after disabling deploy HA.
+            # - uses: ./.github/actions/fly-scale-processes
+            #   with:
+            #       counts: web=1
             # Optional: for apps using fly.json experimental.machine_config.
             # - uses: ./.github/actions/fly-cleanup-machines
             #   with:

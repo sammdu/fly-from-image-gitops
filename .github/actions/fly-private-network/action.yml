@@ -1,0 +1,58 @@
+name: Fly.io Private Network
+description: Enforce internal or Flycast private networking
+
+inputs:
+    access-mode:
+        description: flycast or internal
+        required: false
+        default: ""
+    allocate:
+        description: Allocate a private IPv6 address when missing
+        required: false
+        default: "false"
+
+runs:
+    using: composite
+    steps:
+        - name: Enforce private-only networking
+          shell: bash
+          env:
+              ACCESS_MODE: ${{ inputs.access-mode }}
+              ALLOCATE_PRIVATE_IP: ${{ inputs.allocate }}
+          run: |
+              mode="$ACCESS_MODE"
+              [ -n "$mode" ] || mode="$FLY_ACCESS_MODE"
+              if [ -z "$mode" ] && [ "$FLY_PRIVATE_ONLY" = "true" ]; then
+                  mode="flycast"
+              fi
+
+              ips_json=$(flyctl ips list --app "$FLY_APP_NAME" --json)
+              private_v6=$(echo "$ips_json" | jq -r '.[] | select(((.Type // .type // "") | ascii_downcase) | contains("private")) | (.IP // .ip // empty)' | head -n 1)
+
+              if [ -z "$mode" ] && [ -n "$private_v6" ]; then
+                  mode="flycast"
+              fi
+              [ -n "$mode" ] || mode="internal"
+
+              if [ "$mode" != "flycast" ] && [ "$mode" != "internal" ]; then
+                  echo "fly-private-network requires access-mode flycast or internal."
+                  exit 1
+              fi
+
+              if [ "$mode" = "flycast" ] && [ "$ALLOCATE_PRIVATE_IP" = "true" ]; then
+                  if [ -z "$private_v6" ]; then
+                      flyctl ips allocate-v6 --private --app "$FLY_APP_NAME" --verbose
+                      ips_json=$(flyctl ips list --app "$FLY_APP_NAME" --json)
+                  else
+                      echo "Private Flycast IPv6 already allocated: $private_v6"
+                  fi
+              fi
+
+              public_ips=$(echo "$ips_json" | jq -r '.[] | select(((.Type // .type // "") | ascii_downcase) | contains("public")) | (.IP // .ip // empty)')
+
+              if [ -n "$public_ips" ]; then
+                  echo "Public IPs are attached to private app '$FLY_APP_NAME':"
+                  echo "$public_ips"
+                  echo "Release them with: fly ips release <ip> --app $FLY_APP_NAME"
+                  exit 1
+              fi

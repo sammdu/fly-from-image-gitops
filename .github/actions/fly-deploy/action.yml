@@ -6,6 +6,10 @@ inputs:
         description: Image reference to deploy
         required: false
         default: ""
+    enable-ha-with-no-volumes:
+        description: Set to "true" to let fly deploy create HA spare Machines for service groups without volumes
+        required: false
+        default: "false"
 
 runs:
     using: composite
@@ -21,12 +25,14 @@ runs:
 
               override_image="${{ inputs.image }}"
               configured_image=$(jq -r '.build.image // empty' fly.json)
+              deploy_args=(--app "$FLY_APP_NAME" --config fly.json --ha="${{ inputs.enable-ha-with-no-volumes }}" --yes --debug --verbose)
 
               if [ -n "$override_image" ]; then
-                  flyctl deploy --app "$FLY_APP_NAME" --config fly.json --image "$override_image" --yes --debug --verbose
+                  flyctl deploy "${deploy_args[@]}" --image "$override_image"
               elif [ -n "$configured_image" ]; then
                   docker pull "$configured_image"
-                  flyctl deploy --app "$FLY_APP_NAME" --config fly.json --image "$configured_image" --local-only --yes --debug --verbose
+                  flyctl deploy "${deploy_args[@]}" --image "$configured_image" --local-only
               else
-                  flyctl deploy --app "$FLY_APP_NAME" --config fly.json --yes --debug --verbose
+                  flyctl deploy "${deploy_args[@]}"
               fi
+        - uses: ./.github/actions/fly-access-url

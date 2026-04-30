@@ -1,0 +1,16 @@
+name: Fly.io Scale Processes
+description: Reconcile Fly.io process group Machine counts
+
+inputs:
+    counts:
+        description: Space-separated process=count targets passed to fly scale count, for example web=1
+        required: true
+
+runs:
+    using: composite
+    steps:
+        - name: Scale process groups
+          shell: bash
+          env:
+              COUNTS: ${{ inputs.counts }}
+          run: flyctl scale count $COUNTS --app "$FLY_APP_NAME" --yes --verbose

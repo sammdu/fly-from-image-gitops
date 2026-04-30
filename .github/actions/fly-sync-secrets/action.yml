@@ -1,13 +1,13 @@
 name: Fly.io Sync Secrets
-description: Set explicitly listed Fly.io secrets from this step's environment
+description: Import Fly.io secrets from KEY=VALUE lines
 
 inputs:
     stage:
         description: Stage secrets without restarting machines
         required: false
         default: "true"
-    secret-names:
-        description: Newline-separated environment variable names to set as Fly.io secrets
+    secrets:
+        description: Newline-separated KEY=VALUE secrets to import
         required: false
         default: ""
 
@@ -17,29 +17,21 @@ runs:
         - name: Sync secrets
           shell: bash
           env:
-              SECRET_NAMES: ${{ inputs.secret-names }}
+              FLY_SECRETS: ${{ inputs.secrets }}
               STAGE_SECRETS: ${{ inputs.stage }}
           run: |
-              secret_args=()
-              while IFS= read -r name; do
-                  [ -z "$name" ] && continue
-
-                  value=$(printenv "$name"; :)
-                  if [ -z "$value" ]; then
-                      echo "Missing value for secret environment variable: $name"
-                      exit 1
-                  fi
-
-                  secret_args+=("$name=$value")
-              done <<< "$SECRET_NAMES"
-
-              if [ "${#secret_args[@]}" -eq 0 ]; then
+              if [ -z "$FLY_SECRETS" ]; then
                   echo "No secrets configured."
                   exit 0
               fi
 
+              if printf '%s\n' "$FLY_SECRETS" | grep -v '^$' | grep -qvE '^[A-Za-z_][A-Za-z0-9_]*=.+'; then
+                  echo "Invalid secrets: each line must be non-empty KEY=VALUE."
+                  exit 1
+              fi
+
               if [ "$STAGE_SECRETS" = "true" ]; then
-                  flyctl secrets set --app "$FLY_APP_NAME" --stage "${secret_args[@]}"
+                  printf '%s\n' "$FLY_SECRETS" | flyctl secrets import --app "$FLY_APP_NAME" --stage
               else
-                  flyctl secrets set --app "$FLY_APP_NAME" "${secret_args[@]}"
+                  printf '%s\n' "$FLY_SECRETS" | flyctl secrets import --app "$FLY_APP_NAME"
               fi

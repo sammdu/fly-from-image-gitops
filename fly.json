@@ -5,6 +5,8 @@
         "image": "your-registry/your-image:tag"
     },
     "deploy": {
+        "strategy": "rolling",
+        "max_unavailable": 1,
         "wait_timeout": "10m"
     },
     "env": {},

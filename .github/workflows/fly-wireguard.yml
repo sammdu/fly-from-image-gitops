@@ -1,0 +1,33 @@
+name: Fly WireGuard Config
+
+on:
+    workflow_dispatch:
+        inputs:
+            peer_name:
+                description: WireGuard peer name; blank uses app slug plus short commit
+                required: false
+                default: ""
+            match_prefix:
+                description: Existing peer name prefix to match; blank uses app prefix when peer_name is blank
+                required: false
+                default: ""
+            recreate:
+                description: Recreate the peer and print a fresh config
+                type: boolean
+                required: false
+                default: false
+
+jobs:
+    config:
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v6
+            - uses: ./.github/actions/fly-setup
+              with:
+                  fly-api-token: ${{ secrets.FLY_API_TOKEN }}
+            - uses: ./.github/actions/fly-wireguard-config
+              with:
+                  peer-name: ${{ inputs.peer_name }}
+                  match-prefix: ${{ inputs.match_prefix }}
+                  recreate: ${{ inputs.recreate }}
