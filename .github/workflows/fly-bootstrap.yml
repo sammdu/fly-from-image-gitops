@@ -3,15 +3,11 @@ name: Fly Bootstrap
 on:
     workflow_dispatch:
 
-jobs:
-    set-secrets:
-        uses: ./.github/workflows/fly-set-secrets.yml
-        with:
-            stage: false
-        secrets: inherit
+# env:
+#     FLY_ACCESS_MODE: flycast
 
-    bootstrap:
-        needs: set-secrets
+jobs:
+    provision:
         runs-on: ubuntu-latest
 
         steps:
@@ -20,9 +16,36 @@ jobs:
               with:
                   fly-api-token: ${{ secrets.FLY_API_TOKEN }}
             - uses: ./.github/actions/fly-provision
+            # Optional: allocate/enforce private Flycast access during bootstrap.
+            # Set FLY_ACCESS_MODE: flycast in workflow env before enabling.
+            # - uses: ./.github/actions/fly-private-network
+            #   with:
+            #       allocate: "true"
+
+    set-secrets:
+        needs: provision
+        uses: ./.github/workflows/fly-set-secrets.yml
+        with:
+            stage: false
+        secrets: inherit
+
+    deploy:
+        needs: set-secrets
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v6
+            - uses: ./.github/actions/fly-setup
+              with:
+                  fly-api-token: ${{ secrets.FLY_API_TOKEN }}
+            # Optional: enforce private-only access before deploy.
+            # - uses: ./.github/actions/fly-private-network
+            # Optional: validate/render Docker Compose when fly.json uses build.compose.
+            # - uses: ./.github/actions/fly-compose
             - id: build-image
               uses: ./.github/actions/fly-build-image
             - uses: ./.github/actions/fly-deploy
               with:
                   image: ${{ steps.build-image.outputs.image }}
-            - uses: ./.github/actions/fly-wireguard-config
+            # Optional: print a WireGuard config for private app access.
+            # - uses: ./.github/actions/fly-wireguard-config

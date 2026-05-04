@@ -3,11 +3,11 @@ description: Create or recreate a Fly WireGuard peer and print the config
 
 inputs:
     peer-name:
-        description: WireGuard peer name; blank uses app slug plus short commit
+        description: WireGuard peer name; blank uses app name prefix plus short commit
         required: false
         default: ""
     match-prefix:
-        description: Peer name prefix to match for existence and recreate cleanup; blank uses app prefix when peer-name is blank
+        description: Peer name prefix to match for existence and recreate cleanup; blank uses generated app prefix when peer-name is blank
         required: false
         default: ""
     recreate:
@@ -25,7 +25,7 @@ runs:
               WIREGUARD_MATCH_PREFIX: ${{ inputs.match-prefix }}
               RECREATE_WIREGUARD: ${{ inputs.recreate }}
           run: |
-              app_prefix=$(printf '%s' "$FLY_APP_NAME" | cut -d- -f1,2)
+              app_prefix=$(printf '%s' "$FLY_APP_NAME" | cut -c1-10)
               short_sha=$(printf '%s' "$GITHUB_SHA" | cut -c1-4)
               peer="$WIREGUARD_PEER_NAME"
               [ -n "$peer" ] || peer="$app_prefix-$short_sha"

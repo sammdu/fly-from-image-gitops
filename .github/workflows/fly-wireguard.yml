@@ -4,7 +4,7 @@ on:
     workflow_dispatch:
         inputs:
             peer_name:
-                description: WireGuard peer name; blank uses app slug plus short commit
+                description: WireGuard peer name; blank uses app name prefix plus short commit
                 required: false
                 default: ""
             match_prefix:

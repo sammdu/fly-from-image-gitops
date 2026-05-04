@@ -8,17 +8,32 @@ Use this guidance when adapting this template for a specific application.
 - Before porting a fix from another deployment, decide whether it addresses a template concern or only that app's topology.
 - Prefer small changes that remove a class of failures over broad synchronization from another fork.
 - When the template already encodes a deployment mechanic, keep this file focused on reasoning and failure modes rather than restating the implementation.
+- Avoid carrying over branch-specific checks, scripts, or workarounds unless the same failure mode exists in the target app.
+- Favor inheriting or inferring from `fly.json`, workflow `env`, and action outputs over manually repeating app names, ports, image names, regions, access mode, or process lists.
+- Keep actions independent: deploy logic belongs in `fly-deploy`, private network policy in `fly-private-network`, Compose preparation in `fly-compose`, and secret mapping in `fly-set-secrets`.
+- Keep image routing, staged secrets, checkout/setup ordering, private networking, Compose preparation, and cleanup as reusable mechanics instead of copied workflow blocks.
+
+## Start From Simplicity
+
+- Approach planning and implementation with simplicity and minimalism as first principles.
+- Prefer the least custom solution that satisfies the deployment goal and preserves operator clarity.
+- Use what the platform, template, upstream image, framework, and existing project conventions already provide before adding new logic.
+- Treat every new script, check, service, workflow step, override, or abstraction as a cost that must be justified by a concrete failure mode or requirement.
+- When several approaches could work, choose the one with fewer moving parts, fewer places to update, and less hidden coordination.
+- Before adding custom logic, ask whether the same outcome can be reached by removing, simplifying, reusing, or slightly adjusting existing behavior.
+- Keep app-specific behavior close to the app, and avoid duplicating responsibilities already handled by reusable template mechanics.
+- Template updates should shrink future app setup; add a new action or workflow step only when it removes repeated setup or isolates a real Fly failure mode.
+- When revising an existing change, prefer amending and shrinking it over layering on follow-up cleanup.
 
 ## Reason About Fly Semantics
 
 - Treat health checks as deploy and proxy readiness contracts, not broad dependency tests.
 - Avoid deploy-time checks that wake or block on databases, queues, caches, or external APIs unless that is the intended readiness contract.
 - Dependency checks can change wakeup and deploy behavior; distinguish "the app can answer traffic" from "every downstream dependency is ready."
-- For scale-to-zero apps, make cost, wakeup behavior, and reliability tradeoffs explicit before keeping any Machine warm.
-- Consider `suspend` for scale-to-zero services that fit Fly's constraints and benefit from faster wakeups.
-- Distinguish slow cold starts, wrong bind addresses, private-network routing, and app boot failures before changing ports, addresses, or proxy settings.
-- For private services that need wake-on-request behavior, verify the traffic path actually goes through Fly Proxy rather than direct private DNS.
-- Reserve release commands for cases where failing before rollout is clearly better than letting the app boot and report health.
+- For scale-to-zero apps, make cost, wakeup behavior, and reliability tradeoffs explicit before keeping any process warm.
+- Distinguish cold starts, wrong bind addresses, private-network routing, and app boot failures before changing ports, addresses, or proxy settings.
+- For private services that need wake-on-request behavior, verify the traffic path before changing networking or readiness logic.
+- Use pre-release or deploy-blocking hooks only when failing before rollout is clearly better than letting the app boot and report health.
 
 ## Keep Startup Simple
 
@@ -27,8 +42,15 @@ Use this guidance when adapting this template for a specific application.
 - Prefer shallow startup sequencing over shell frameworks, strict-mode rewrites, and broad cleanup machinery.
 - Polling loops should notice when the child process they depend on has exited, and should emit enough context to debug timing failures.
 - Account for VM-level state that can survive process or container restarts, including stale sockets, mounted paths, pid files, and sysctl changes.
-- Be skeptical of command strings that cross YAML, shell, remote exec, and container boundaries; move complex payloads into inspectable scripts.
+- Be skeptical of command strings that cross config, shell, remote exec, and container boundaries; simplify them first, and only move unavoidable complexity into inspectable scripts.
 - In multi-process apps, verify services, checks, volumes, VMs, and mounts are scoped to the intended process group.
+
+## Compose Guidance
+
+- Use Fly native Compose when services belong on one Machine and a Compose file is the clearest source of container definitions.
+- Keep Fly-specific persistence in `fly.json`; Compose volumes do not replace Fly Volumes.
+- Avoid adding app-specific Compose generators to this template. Put upstream fetches, framework-specific overrides, and custom normalization in the app repo.
+- If Compose needs preprocessing, prefer a small app-local action before `fly-compose` and `fly-deploy`.
 
 ## Preserve Operator Clarity
 
@@ -41,18 +63,21 @@ Use this guidance when adapting this template for a specific application.
 - Inspect current repo state before editing; do not assume a clean template or a clean fork.
 - When asked to simplify, remove moving parts first: extra scripts, duplicated checks, repeated notices, and unnecessary preflight work.
 - Verify tool behavior, runtime versions, and provider assumptions with actual source, docs, or command output.
-- Recheck assumptions around registry access, GitHub Actions runtimes, IPv4/IPv6 preference, DNS behavior, and external provider configuration.
+- Recheck assumptions around registry access, CI runtimes, network behavior, DNS behavior, and external provider configuration.
 - Treat memory, cache, and timeout values as workload hypotheses; validate them against actual Machine limits and logs.
 
 ## Official Fly.io Docs
 
 - Proactively read official Fly.io docs for deployment, Machines, networking, health checks, secrets, and workflow questions. Use them to challenge existing assumptions before planning or editing.
 - Prefer raw markdown from `https://raw.githubusercontent.com/superfly/docs/main/` over rendered pages from `https://fly.io/docs/`.
-- URL mapping examples:
-  - Base path: `https://fly.io/docs/` -> `https://raw.githubusercontent.com/superfly/docs/main/`
-  - Flyctl command page: `https://fly.io/docs/flyctl/deploy/` -> `https://raw.githubusercontent.com/superfly/docs/main/flyctl/cmd/fly_deploy.md`
-  - HTML markdown page: `https://fly.io/docs/blueprints/custom-deploy-workflows/` -> `https://raw.githubusercontent.com/superfly/docs/main/blueprints/custom-deploy-workflows.html.md`
-  - Markerb page: `https://fly.io/docs/reference/configuration/` -> `https://raw.githubusercontent.com/superfly/docs/main/reference/configuration.html.markerb`
+- Fly.io docs URL mapping patterns:
+  - `https://fly.io/docs/<path>/` -> `https://raw.githubusercontent.com/superfly/docs/main/<path>.md`
+  - `https://fly.io/docs/<path>/` -> `https://raw.githubusercontent.com/superfly/docs/main/<path>.html.md`
+  - `https://fly.io/docs/<path>/` -> `https://raw.githubusercontent.com/superfly/docs/main/<path>.html.markerb`
+  - `https://fly.io/docs/flyctl/<command>/` -> `https://raw.githubusercontent.com/superfly/docs/main/flyctl/cmd/fly_<command>.md`
+- GitHub docs URL mapping patterns:
+  - `https://github.com/<owner>/<repo>/blob/<branch>/<path>` -> `https://raw.githubusercontent.com/<owner>/<repo>/refs/heads/<branch>/<path>`
+  - `https://github.com/<owner>/<repo>/blob/<tag>/<path>` -> `https://raw.githubusercontent.com/<owner>/<repo>/refs/tags/<tag>/<path>`
 
 ### Health Checks & Deployments
 
@@ -64,6 +89,7 @@ Use this guidance when adapting this template for a specific application.
 ### Multiple Processes
 
 - https://fly.io/docs/app-guides/multiple-processes/
+- https://fly.io/docs/machines/guides-examples/multi-container-machines/
 - https://supervisord.org/configuration.html
 - https://fly.io/docs/launch/processes/
 

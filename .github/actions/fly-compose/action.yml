@@ -1,0 +1,44 @@
+name: Fly.io Compose
+description: Validate and optionally render Docker Compose before flyctl deploy
+
+inputs:
+    file:
+        description: Compose file path; blank reads fly.json build.compose.file
+        required: false
+        default: ""
+    render:
+        description: Render resolved Compose back to the selected file
+        required: false
+        default: "true"
+
+outputs:
+    file:
+        description: Compose file path processed by this action
+        value: ${{ steps.compose.outputs.file }}
+
+runs:
+    using: composite
+    steps:
+        - id: compose
+          shell: bash
+          env:
+              COMPOSE_FILE_INPUT: ${{ inputs.file }}
+              RENDER_COMPOSE: ${{ inputs.render }}
+          run: |
+              file="$COMPOSE_FILE_INPUT"
+              [ -n "$file" ] || file=$(jq -r '.build.compose.file // empty' fly.json)
+
+              if [ -z "$file" ]; then
+                  echo "No build.compose.file configured."
+                  exit 0
+              fi
+
+              docker compose -f "$file" config --no-normalize --quiet
+              docker compose -f "$file" config --services
+
+              if [ "$RENDER_COMPOSE" = "true" ]; then
+                  docker compose -f "$file" config --no-normalize > "$RUNNER_TEMP/compose.yaml"
+                  mv "$RUNNER_TEMP/compose.yaml" "$file"
+              fi
+
+              echo "file=$file" >> "$GITHUB_OUTPUT"

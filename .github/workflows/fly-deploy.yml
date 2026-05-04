@@ -5,6 +5,9 @@ on:
     # push:
     #     branches: [main]
 
+# env:
+#     FLY_ACCESS_MODE: flycast
+
 jobs:
     set-secrets:
         uses: ./.github/workflows/fly-set-secrets.yml
@@ -21,13 +24,18 @@ jobs:
             - uses: ./.github/actions/fly-setup
               with:
                   fly-api-token: ${{ secrets.FLY_API_TOKEN }}
+            # Optional: enforce private-only access before deploy.
+            # - uses: ./.github/actions/fly-private-network
+            # Optional: validate/render Docker Compose when fly.json uses build.compose.
+            # - uses: ./.github/actions/fly-compose
             - id: build-image
               uses: ./.github/actions/fly-build-image
             - uses: ./.github/actions/fly-deploy
               with:
                   enable-ha-with-no-volumes: "false"
                   image: ${{ steps.build-image.outputs.image }}
-            - uses: ./.github/actions/fly-wireguard-config
+            # Optional: print a WireGuard config for private app access.
+            # - uses: ./.github/actions/fly-wireguard-config
             # Optional: enforce process group Machine counts, for example after disabling deploy HA.
             # - uses: ./.github/actions/fly-scale-processes
             #   with:

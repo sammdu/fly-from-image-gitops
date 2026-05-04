@@ -18,12 +18,6 @@
         "min_machines_running": 0
     },
     "kill_timeout": 20,
-    "mounts": [
-        {
-            "destination": "/app/data",
-            "source": "app_data"
-        }
-    ],
     "vm": [
         {
             "memory": "1gb",
