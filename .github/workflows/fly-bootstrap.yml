@@ -47,5 +47,5 @@ jobs:
             - uses: ./.github/actions/fly-deploy
               with:
                   image: ${{ steps.build-image.outputs.image }}
-            # Optional: print a WireGuard config for private app access.
+            # For private-network apps, print or reuse WireGuard access after deploy.
             # - uses: ./.github/actions/fly-wireguard-config

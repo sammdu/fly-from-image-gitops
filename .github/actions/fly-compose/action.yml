@@ -10,6 +10,10 @@ inputs:
         description: Render resolved Compose back to the selected file
         required: false
         default: "true"
+    env-file:
+        description: Compose interpolation env file
+        required: false
+        default: ""
 
 outputs:
     file:
@@ -23,6 +27,7 @@ runs:
           shell: bash
           env:
               COMPOSE_FILE_INPUT: ${{ inputs.file }}
+              COMPOSE_ENV_FILE: ${{ inputs.env-file }}
               RENDER_COMPOSE: ${{ inputs.render }}
           run: |
               file="$COMPOSE_FILE_INPUT"
@@ -33,11 +38,15 @@ runs:
                   exit 0
               fi
 
-              docker compose -f "$file" config --no-normalize --quiet
-              docker compose -f "$file" config --services
+              compose_args=(-f "$file")
+              [ -n "$COMPOSE_ENV_FILE" ] && compose_args=(--env-file "$COMPOSE_ENV_FILE" "${compose_args[@]}")
+
+              docker compose version
+              docker compose "${compose_args[@]}" config --no-normalize --quiet
+              docker compose "${compose_args[@]}" config --services
 
               if [ "$RENDER_COMPOSE" = "true" ]; then
-                  docker compose -f "$file" config --no-normalize > "$RUNNER_TEMP/compose.yaml"
+                  docker compose "${compose_args[@]}" config --no-normalize > "$RUNNER_TEMP/compose.yaml"
                   mv "$RUNNER_TEMP/compose.yaml" "$file"
               fi
 

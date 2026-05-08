@@ -30,6 +30,6 @@ runs:
               fi
 
               flyctl auth docker
-              docker build --file "$dockerfile" --tag "$image" "$context"
+              docker build --pull --file "$dockerfile" --tag "$image" "$context"
               docker push "$image"
               echo "image=$image" >> "$GITHUB_OUTPUT"

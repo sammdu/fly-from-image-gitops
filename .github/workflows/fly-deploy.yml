@@ -34,9 +34,9 @@ jobs:
               with:
                   enable-ha-with-no-volumes: "false"
                   image: ${{ steps.build-image.outputs.image }}
-            # Optional: print a WireGuard config for private app access.
+            # For private-network apps, print or reuse WireGuard access after deploy.
             # - uses: ./.github/actions/fly-wireguard-config
-            # Optional: enforce process group Machine counts, for example after disabling deploy HA.
+            # Optional: explicitly reconcile process group Machine counts after deploy.
             # - uses: ./.github/actions/fly-scale-processes
             #   with:
             #       counts: web=1

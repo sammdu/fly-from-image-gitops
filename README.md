@@ -33,7 +33,15 @@ Docker Compose:
 "build": { "compose": { "file": "compose.yaml" } }
 ```
 
-Uncomment `fly-compose` before deploy when using Compose. Keep Fly Volumes in `fly.json`, not Compose volumes. Fly native Compose is best when services belong on one multi-container Machine; containers share `localhost`, one service receives inbound proxy traffic, and one service should be buildable.
+Uncomment `fly-compose` before deploy when using Compose. If you use a non-secret interpolation file, pass it as `env-file`:
+
+```yaml
+- uses: ./.github/actions/fly-compose
+  with:
+      env-file: compose.fly.env
+```
+
+Keep Fly Volumes in `fly.json`, not Compose volumes. When every Compose service uses a prebuilt image, pin `build.image` to the primary image and skip `fly-build-image`. Fly native Compose is best when services belong on one multi-container Machine; containers share `localhost`, one service receives inbound proxy traffic, and one service should be buildable.
 
 Custom multi-container Machine:
 
@@ -52,7 +60,7 @@ Multi-machine process groups:
 ]
 ```
 
-Scope `services`, `mounts`, and `vm` entries to the intended process groups. Uncomment `fly-scale-processes` when deploy HA is not the Machine count policy you want.
+Scope `services`, `mounts`, and `vm` entries to the intended process groups. Uncomment `fly-scale-processes` after deploy when you want explicit process group Machine counts.
 
 ## Secrets
 
@@ -92,24 +100,25 @@ No default workflow path destroys Machines or volumes. Destructive cleanup actio
 
 ## Private Apps
 
-For Flycast/private-only apps, uncomment the workflow `env` block:
+For private-network apps, uncomment the workflow `env` block and set the access mode:
 
 ```yaml
 env:
     FLY_ACCESS_MODE: flycast
 ```
 
-Then uncomment `fly-private-network` in bootstrap and deploy. Bootstrap should pass `allocate: "true"` for Flycast. Uncomment `fly-wireguard-config` when you want the workflow to print a WireGuard config.
+Use `flycast` for `.flycast` access through Fly Proxy, or `internal` for `.internal` access over 6PN. Then uncomment `fly-private-network` in bootstrap and deploy. Bootstrap should pass `allocate: "true"` for Flycast. Keep `fly-wireguard-config` enabled after bootstrap and deploy so the workflow creates or reports a reusable private-network peer automatically.
 
 ## Workflows And Actions
 
 - `fly-bootstrap.yml`: create app and volumes, sync secrets, optionally prepare private networking or Compose, then deploy.
 - `fly-deploy.yml`: sync secrets, optionally prepare private networking or Compose, then deploy.
 - `fly-set-secrets.yml`: reusable helper used by both main workflows.
-- `fly-wireguard.yml`: manual utility for rotating or printing private access config.
+- `fly-wireguard.yml`: manual utility for rotating private access config.
 - `fly-private-network`: Flycast/internal policy, private IPv6 allocation, and public IP checks.
 - `fly-compose`: validate and optionally render Docker Compose before `flyctl deploy`.
-- `fly-scale-processes`, `fly-cleanup-volumes`, `fly-cleanup-machines`: optional maintenance actions.
+- `fly-scale-processes`: explicit process group Machine count reconciliation after deploy.
+- `fly-cleanup-volumes`, `fly-cleanup-machines`: optional maintenance actions.
 
 Prefer uncommenting existing optional steps over adding duplicate workflow jobs.
 
