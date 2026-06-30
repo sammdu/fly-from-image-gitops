@@ -1,5 +1,5 @@
 name: Fly.io Setup
-description: Setup flyctl and load environment configuration
+description: Install flyctl and export shared Fly.io environment for all later steps
 
 inputs:
     fly-api-token:
@@ -12,13 +12,14 @@ runs:
         - uses: superfly/flyctl-actions/setup-flyctl@master
         - name: Load environment
           shell: bash
+          env:
+              FLY_API_TOKEN: ${{ inputs.fly-api-token }}
           run: |
-              FLY_API_TOKEN="${{ inputs.fly-api-token }}"
-              FLY_APP_NAME=$(jq -r '.app // ""' fly.json)
-              FLY_PRIMARY_REGION=$(jq -r '.primary_region // ""' fly.json)
-
-              if [ -z "$FLY_ORG" ]; then
-                  FLY_ORG="personal"
+              app_name=$(jq -r '.app // ""' fly.json)
+              primary_region=$(jq -r '.primary_region // ""' fly.json)
+              org_name="$FLY_ORG"
+              if [ -z "$org_name" ]; then
+                  org_name="personal"
               fi
 
               if [ -z "$FLY_API_TOKEN" ]; then
@@ -26,19 +27,20 @@ runs:
                   exit 1
               fi
 
-              if [ -z "$FLY_APP_NAME" ]; then
+              if [ -z "$app_name" ]; then
                   echo "Missing .app in fly.json"
                   exit 1
               fi
 
-              if [ -z "$FLY_PRIMARY_REGION" ]; then
+              if [ -z "$primary_region" ]; then
                   echo "Missing .primary_region in fly.json"
                   exit 1
               fi
 
+              # FLY_APP and FLY_API_TOKEN are native flyctl vars, so later steps need no --app.
               cat >> "$GITHUB_ENV" <<EOF
               FLY_API_TOKEN=$FLY_API_TOKEN
-              FLY_APP_NAME=$FLY_APP_NAME
-              FLY_PRIMARY_REGION=$FLY_PRIMARY_REGION
-              FLY_ORG=$FLY_ORG
+              FLY_APP=$app_name
+              FLY_PRIMARY_REGION=$primary_region
+              FLY_ORG=$org_name
               EOF

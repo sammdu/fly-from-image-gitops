@@ -22,11 +22,8 @@ runs:
           run: |
               mode="$ACCESS_MODE"
               [ -n "$mode" ] || mode="$FLY_ACCESS_MODE"
-              if [ -z "$mode" ] && [ "$FLY_PRIVATE_ONLY" = "true" ]; then
-                  mode="flycast"
-              fi
 
-              ips_json=$(flyctl ips list --app "$FLY_APP_NAME" --json)
+              ips_json=$(flyctl ips list --json)
               private_v6=$(echo "$ips_json" | jq -r '.[] | select(((.Type // .type // "") | ascii_downcase) | contains("private")) | (.IP // .ip // empty)' | head -n 1)
 
               if [ -z "$mode" ] && [ -n "$private_v6" ]; then
@@ -41,8 +38,8 @@ runs:
 
               if [ "$mode" = "flycast" ] && [ "$ALLOCATE_PRIVATE_IP" = "true" ]; then
                   if [ -z "$private_v6" ]; then
-                      flyctl ips allocate-v6 --private --app "$FLY_APP_NAME" --verbose
-                      ips_json=$(flyctl ips list --app "$FLY_APP_NAME" --json)
+                      flyctl ips allocate-v6 --private --verbose
+                      ips_json=$(flyctl ips list --json)
                   else
                       echo "Private Flycast IPv6 already allocated: $private_v6"
                   fi
@@ -51,8 +48,8 @@ runs:
               public_ips=$(echo "$ips_json" | jq -r '.[] | select(((.Type // .type // "") | ascii_downcase) | contains("public")) | (.IP // .ip // empty)')
 
               if [ -n "$public_ips" ]; then
-                  echo "Public IPs are attached to private app '$FLY_APP_NAME':"
+                  echo "Public IPs are attached to private app '$FLY_APP':"
                   echo "$public_ips"
-                  echo "Release them with: fly ips release <ip> --app $FLY_APP_NAME"
+                  echo "Release them with: fly ips release <ip> --app $FLY_APP"
                   exit 1
               fi

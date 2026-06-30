@@ -3,7 +3,7 @@ description: Build and push a deploy image when fly.json declares build.dockerfi
 
 outputs:
     image:
-        description: Image reference built and pushed for deployment
+        description: Built and pushed image reference
         value: ${{ steps.build.outputs.image }}
 
 runs:
@@ -22,7 +22,7 @@ runs:
 
               context=$(jq -r '.build.context // "."' fly.json)
               short_sha=$(git rev-parse --short=12 "$GITHUB_SHA")
-              image="registry.fly.io/$FLY_APP_NAME:deploy-$short_sha"
+              image="registry.fly.io/$FLY_APP:deploy-$short_sha"
 
               if [ ! -f "$dockerfile" ]; then
                   echo "Dockerfile not found: $dockerfile"

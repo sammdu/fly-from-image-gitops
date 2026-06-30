@@ -15,6 +15,11 @@ jobs:
             stage: true
         secrets: inherit
 
+    # Compose: enable this job, add it to deploy.needs, and enable decryption below.
+    # compose:
+    #     uses: ./.github/workflows/fly-merge-compose.yml
+    #     secrets: inherit
+
     deploy:
         needs: set-secrets
         runs-on: ubuntu-latest
@@ -26,17 +31,25 @@ jobs:
                   fly-api-token: ${{ secrets.FLY_API_TOKEN }}
             # Optional: enforce private-only access before deploy.
             # - uses: ./.github/actions/fly-private-network
-            # Optional: validate/render Docker Compose when fly.json uses build.compose.
-            # - uses: ./.github/actions/fly-compose
+            # Compose: download and decrypt the rendered file.
+            # - uses: actions/download-artifact@v8
+            #   with:
+            #       name: compose
+            # - uses: ./.github/actions/gh-artifact-encrypt-decrypt
+            #   with:
+            #       direction: decrypt
+            #       key: ${{ secrets.FLY_API_TOKEN }}
+            #       input: compose.yaml.gpg
+            #       output: compose.yaml
             - id: build-image
               uses: ./.github/actions/fly-build-image
             - uses: ./.github/actions/fly-deploy
               with:
-                  enable-ha-with-no-volumes: "false"
                   image: ${{ steps.build-image.outputs.image }}
-            # For private-network apps, print or reuse WireGuard access after deploy.
+            - uses: ./.github/actions/fly-access-url
+            # Print or reuse WireGuard access for private apps.
             # - uses: ./.github/actions/fly-wireguard-config
-            # Optional: explicitly reconcile process group Machine counts after deploy.
+            # Optional: reconcile process group Machine counts after deploy.
             # - uses: ./.github/actions/fly-scale-processes
             #   with:
             #       counts: web=1
@@ -44,8 +57,8 @@ jobs:
             # - uses: ./.github/actions/fly-cleanup-machines
             #   with:
             #       confirm: "true"
-            # Optional: delete unattached volumes. Set orphaned to "true" to also
-            # snapshot and remove attached volumes no longer declared in fly.json mounts.
+            # Optional: delete unattached volumes; orphaned: "true" also snapshots and
+            # removes attached volumes no longer in fly.json mounts.
             # - uses: ./.github/actions/fly-cleanup-volumes
             #   with:
             #       confirm: "true"

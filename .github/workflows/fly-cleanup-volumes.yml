@@ -1,0 +1,31 @@
+name: Fly Cleanup Volumes
+
+on:
+    workflow_dispatch:
+        inputs:
+            volume:
+                description: Target one volume id (vol_...) to destroy; blank runs bulk cleanup
+                default: ""
+            confirm:
+                description: Set to true to destroy the listed volumes
+                type: boolean
+                default: false
+            orphaned:
+                description: Also snapshot and remove attached volumes no longer declared in fly.json mounts
+                type: boolean
+                default: false
+
+jobs:
+    cleanup:
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v6
+            - uses: ./.github/actions/fly-setup
+              with:
+                  fly-api-token: ${{ secrets.FLY_API_TOKEN }}
+            - uses: ./.github/actions/fly-cleanup-volumes
+              with:
+                  volume: ${{ inputs.volume }}
+                  confirm: ${{ inputs.confirm }}
+                  orphaned: ${{ inputs.orphaned }}

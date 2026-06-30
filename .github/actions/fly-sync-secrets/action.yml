@@ -25,13 +25,17 @@ runs:
                   exit 0
               fi
 
-              if printf '%s\n' "$FLY_SECRETS" | grep -v '^$' | grep -qvE '^[A-Za-z_][A-Za-z0-9_]*=.+'; then
-                  echo "Invalid secrets: each line must be non-empty KEY=VALUE."
-                  exit 1
+              while IFS= read -r line; do
+                  [ -z "$line" ] && continue
+                  case "$line" in
+                      ?*=?*) ;;
+                      *) echo "Invalid secret line (need KEY=VALUE with a non-empty value)"; exit 1 ;;
+                  esac
+              done <<< "$FLY_SECRETS"
+
+              import_args=()
+              if [ "$STAGE_SECRETS" = "true" ]; then
+                  import_args+=(--stage)
               fi
 
-              if [ "$STAGE_SECRETS" = "true" ]; then
-                  printf '%s\n' "$FLY_SECRETS" | flyctl secrets import --app "$FLY_APP_NAME" --stage
-              else
-                  printf '%s\n' "$FLY_SECRETS" | flyctl secrets import --app "$FLY_APP_NAME"
-              fi
+              flyctl secrets import "${import_args[@]}" <<< "$FLY_SECRETS"

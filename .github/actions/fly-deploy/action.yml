@@ -10,22 +10,48 @@ inputs:
         description: Set to "true" to let fly deploy create HA spare Machines for service groups without volumes
         required: false
         default: "false"
+    skip-release-command:
+        description: Set to "true" to skip deploy.release_command (setup-only deploys)
+        required: false
+        default: "false"
+    start-process-groups:
+        description: Comma-separated process groups whose stopped/suspended Machines start before deploy
+        required: false
+        default: ""
+    process-groups:
+        description: Comma-separated process groups to deploy
+        required: false
+        default: ""
 
 runs:
     using: composite
     steps:
+        - name: Verify app
+          shell: bash
+          run: |
+              app_exists=$(flyctl apps list --json | jq -r --arg name "$FLY_APP" '.[] | select(.Name == $name) | .Name')
+              if [ -z "$app_exists" ]; then
+                  echo "App '$FLY_APP' not found. Run the Fly Bootstrap workflow first."
+                  exit 1
+              fi
+        - name: Start deployed Machines
+          if: ${{ inputs.start-process-groups != '' }}
+          shell: bash
+          env:
+              START_PROCESS_GROUPS: ${{ inputs.start-process-groups }}
+          run: flyctl machines list --json | jq -r --arg groups "$START_PROCESS_GROUPS" '.[] | .config.metadata.fly_process_group as $group | select((.state == "stopped" or .state == "suspended") and .config.metadata.fly_platform_version == "v2" and ($groups | split(",") | index($group))) | .id' | xargs -r flyctl machine start --debug --verbose
         - name: Deploy app
           shell: bash
           run: |
-              app_exists=$(flyctl apps list --json | jq -r --arg name "$FLY_APP_NAME" '.[] | select(.Name == $name) | .Name')
-              if [ -z "$app_exists" ]; then
-                  echo "App '$FLY_APP_NAME' not found. Run the Fly Bootstrap workflow first."
-                  exit 1
-              fi
-
               override_image="${{ inputs.image }}"
               configured_image=$(jq -r '.build.image // empty' fly.json)
-              deploy_args=(--app "$FLY_APP_NAME" --config fly.json --ha="${{ inputs.enable-ha-with-no-volumes }}" --yes --debug --verbose)
+              deploy_args=(--config fly.json --ha="${{ inputs.enable-ha-with-no-volumes }}" --yes --debug --verbose)
+              if [ "${{ inputs.skip-release-command }}" = "true" ]; then
+                  deploy_args+=(--skip-release-command)
+              fi
+              if [ -n "${{ inputs.process-groups }}" ]; then
+                  deploy_args+=(--process-groups "${{ inputs.process-groups }}")
+              fi
 
               if [ -n "$override_image" ]; then
                   flyctl deploy "${deploy_args[@]}" --image "$override_image"
@@ -35,4 +61,7 @@ runs:
               else
                   flyctl deploy "${deploy_args[@]}"
               fi
-        - uses: ./.github/actions/fly-access-url
+        - name: Show recent deploy logs
+          if: ${{ always() }}
+          shell: bash
+          run: flyctl logs --no-tail || echo "::warning::Unable to retrieve recent deploy logs"

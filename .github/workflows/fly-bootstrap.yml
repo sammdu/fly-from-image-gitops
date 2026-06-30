@@ -2,6 +2,11 @@ name: Fly Bootstrap
 
 on:
     workflow_dispatch:
+        inputs:
+            release_dependency_process_groups:
+                description: Process groups required by release_command when they do not exist
+                required: false
+                default: ""
 
 # env:
 #     FLY_ACCESS_MODE: flycast
@@ -16,8 +21,7 @@ jobs:
               with:
                   fly-api-token: ${{ secrets.FLY_API_TOKEN }}
             - uses: ./.github/actions/fly-provision
-            # Optional: allocate/enforce private Flycast access during bootstrap.
-            # Set FLY_ACCESS_MODE: flycast in workflow env before enabling.
+            # Optional: allocate/enforce private Flycast access (set FLY_ACCESS_MODE: flycast in env first).
             # - uses: ./.github/actions/fly-private-network
             #   with:
             #       allocate: "true"
@@ -28,6 +32,12 @@ jobs:
         with:
             stage: false
         secrets: inherit
+
+    # Compose: enable this job, add it to deploy.needs, and enable decryption below.
+    # compose:
+    #     needs: provision
+    #     uses: ./.github/workflows/fly-merge-compose.yml
+    #     secrets: inherit
 
     deploy:
         needs: set-secrets
@@ -40,12 +50,28 @@ jobs:
                   fly-api-token: ${{ secrets.FLY_API_TOKEN }}
             # Optional: enforce private-only access before deploy.
             # - uses: ./.github/actions/fly-private-network
-            # Optional: validate/render Docker Compose when fly.json uses build.compose.
-            # - uses: ./.github/actions/fly-compose
+            # Compose: download and decrypt the rendered file.
+            # - uses: actions/download-artifact@v8
+            #   with:
+            #       name: compose
+            # - uses: ./.github/actions/gh-artifact-encrypt-decrypt
+            #   with:
+            #       direction: decrypt
+            #       key: ${{ secrets.FLY_API_TOKEN }}
+            #       input: compose.yaml.gpg
+            #       output: compose.yaml
             - id: build-image
               uses: ./.github/actions/fly-build-image
+            - if: inputs.release_dependency_process_groups != ''
+              uses: ./.github/actions/fly-deploy
+              with:
+                  image: ${{ steps.build-image.outputs.image }}
+                  process-groups: ${{ inputs.release_dependency_process_groups }}
+                  skip-release-command: "true"
+                  start-process-groups: ${{ inputs.release_dependency_process_groups }}
             - uses: ./.github/actions/fly-deploy
               with:
                   image: ${{ steps.build-image.outputs.image }}
-            # For private-network apps, print or reuse WireGuard access after deploy.
+            - uses: ./.github/actions/fly-access-url
+            # Print or reuse WireGuard access for private apps.
             # - uses: ./.github/actions/fly-wireguard-config

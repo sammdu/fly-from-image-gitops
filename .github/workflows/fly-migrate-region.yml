@@ -1,0 +1,22 @@
+name: Fly Migrate Region
+
+on:
+    workflow_dispatch:
+        inputs:
+            confirm:
+                description: Set to true to fork volumes, clone Machines into primary_region, and destroy the originals
+                type: boolean
+                default: false
+
+jobs:
+    migrate:
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v6
+            - uses: ./.github/actions/fly-setup
+              with:
+                  fly-api-token: ${{ secrets.FLY_API_TOKEN }}
+            - uses: ./.github/actions/fly-migrate-region
+              with:
+                  confirm: ${{ inputs.confirm }}

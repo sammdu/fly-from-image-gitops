@@ -1,0 +1,48 @@
+name: Fly.io Restore Volume Snapshot
+description: Restore a snapshot. replace=false creates a separate volume; replace=true clones the owning volume's Machine onto a restored volume and destroys the old Machine.
+
+inputs:
+    snapshot-id:
+        required: true
+    replace:
+        default: "false"
+    volume-name:
+        default: ""
+    region:
+        default: ""
+    size-gb:
+        default: ""
+
+runs:
+    using: composite
+    steps:
+        - name: Restore volume from snapshot
+          shell: bash
+          env:
+              SNAPSHOT_ID: ${{ inputs.snapshot-id }}
+              REPLACE: ${{ inputs.replace }}
+              VOLUME_NAME: ${{ inputs.volume-name }}
+              REGION: ${{ inputs.region }}
+              SIZE_GB: ${{ inputs.size-gb }}
+          run: |
+              vols=$(flyctl volumes list --json)
+              src=$(for v in $(jq -r '.[].id' <<< "$vols"); do
+                  flyctl volumes snapshots list "$v" --json | jq -r --arg v "$v" --arg s "$SNAPSHOT_ID" 'if any(.id == $s) then $v else empty end'
+              done)
+              vol=$(jq -c --arg v "$src" 'map(select(.id == $v))[0]' <<< "$vols")
+
+              if [ "$REPLACE" = "true" ]; then
+                  machine=$(jq -r .attached_machine_id <<< "$vol")
+                  # Destroy the original only if the clone succeeds.
+                  if flyctl machine clone "$machine" --from-snapshot "$SNAPSHOT_ID" --verbose --debug; then
+                      flyctl machine destroy "$machine" --force
+                  fi
+              else
+                  name="$VOLUME_NAME"
+                  [ -z "$name" ] && name=$(jq -r .name <<< "$vol")
+                  region="$REGION"
+                  [ -z "$region" ] && region=$(jq -r .region <<< "$vol")
+                  size="$SIZE_GB"
+                  [ -z "$size" ] && size=$(jq -r .size_gb <<< "$vol")
+                  flyctl volumes create "$name" --snapshot-id "$SNAPSHOT_ID" --region "$region" --size "$size" --yes --verbose --debug
+              fi

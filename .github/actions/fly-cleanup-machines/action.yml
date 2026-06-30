@@ -21,13 +21,13 @@ runs:
                   exit 0
               fi
 
-              keep=$(flyctl machine list --app "$FLY_APP_NAME" --json | jq -r '[.[] | select(.state != "replaced")] | sort_by(.created_at) | first | .id // empty')
+              keep=$(flyctl machine list --json | jq -r '[.[] | select(.state != "replaced")] | sort_by(.created_at) | first | .id // empty')
               if [ -z "$keep" ]; then
                   echo "No active machine found to keep."
                   exit 0
               fi
 
-              remove=$(flyctl machine list --app "$FLY_APP_NAME" --json | jq -r --arg keep "$keep" '.[] | select(.id != $keep) | .id')
+              remove=$(flyctl machine list --json | jq -r --arg keep "$keep" '.[] | select(.id != $keep) | .id')
               if [ -z "$remove" ]; then
                   echo "No duplicate/replaced machines found."
                   exit 0
@@ -44,5 +44,5 @@ runs:
 
               echo "$remove" | while read -r machine_id; do
                   [ -z "$machine_id" ] && continue
-                  flyctl machine destroy "$machine_id" --app "$FLY_APP_NAME" --force --verbose
+                  flyctl machine destroy "$machine_id" --force --verbose
               done

@@ -1,0 +1,40 @@
+name: Artifact Encrypt/Decrypt
+description: Symmetrically encrypt or decrypt a file with gpg AES256 using a caller-supplied key
+
+inputs:
+    direction:
+        description: encrypt or decrypt
+        required: true
+    key:
+        description: Symmetric passphrase; supply a write-only secret such as FLY_API_TOKEN
+        required: true
+    input:
+        description: Input file path
+        required: true
+    output:
+        description: Output file path
+        required: true
+
+runs:
+    using: composite
+    steps:
+        - shell: bash
+          env:
+              DIRECTION: ${{ inputs.direction }}
+              KEY: ${{ inputs.key }}
+              INPUT: ${{ inputs.input }}
+              OUTPUT: ${{ inputs.output }}
+          run: |
+              if [ -z "$KEY" ]; then
+                  echo "crypt-artifact: key is required"
+                  exit 1
+              fi
+              gpg_args=(--batch --yes --pinentry-mode loopback --passphrase "$KEY")
+              if [ "$DIRECTION" = "encrypt" ]; then
+                  gpg "${gpg_args[@]}" --symmetric --cipher-algo AES256 -o "$OUTPUT" "$INPUT"
+              elif [ "$DIRECTION" = "decrypt" ]; then
+                  gpg "${gpg_args[@]}" --decrypt -o "$OUTPUT" "$INPUT"
+              else
+                  echo "crypt-artifact: direction must be 'encrypt' or 'decrypt', got '$DIRECTION'"
+                  exit 1
+              fi

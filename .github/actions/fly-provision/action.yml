@@ -7,9 +7,9 @@ runs:
         - name: Provision app and volumes
           shell: bash
           run: |
-              app_exists=$(flyctl apps list --json | jq -r --arg name "$FLY_APP_NAME" '.[] | select(.Name == $name) | .Name')
+              app_exists=$(flyctl apps list --json | jq -r --arg name "$FLY_APP" '.[] | select(.Name == $name) | .Name')
               if [ -z "$app_exists" ]; then
-                  flyctl apps create "$FLY_APP_NAME" --org "$FLY_ORG" --verbose
+                  flyctl apps create "$FLY_APP" --org "$FLY_ORG" --verbose
               fi
 
               jq -c '.mounts // [] | .[]' fly.json | while read -r mount; do
@@ -19,16 +19,16 @@ runs:
                       exit 1
                   fi
 
-                  volume_exists=$(flyctl volumes list --app "$FLY_APP_NAME" --json | jq -r --arg name "$volume" '.[] | select(.name == $name) | .id')
+                  volume_exists=$(flyctl volumes list --json | jq -r --arg name "$volume" '.[] | select(.name == $name) | .id')
 
                   if [ -n "$volume_exists" ]; then
                       echo "Volume '$volume' already exists."
                       continue
                   fi
 
-                  volume_args=("$volume" --region "$FLY_PRIMARY_REGION" --app "$FLY_APP_NAME" --yes --verbose)
+                  volume_args=("$volume" --region "$FLY_PRIMARY_REGION" --yes --verbose)
 
-                  initial_size=$(printf '%s\n' "$mount" | jq -r '.initial_size // "" | tostring | ascii_downcase | rtrimstr("gb")')
+                  initial_size=$(jq -r '.initial_size // "" | tostring | ascii_downcase | rtrimstr("gb")' <<< "$mount")
                   [ -n "$initial_size" ] && volume_args+=(--size "$initial_size")
 
                   snapshot_retention=$(echo "$mount" | jq -r '.snapshot_retention // empty')

@@ -1,0 +1,38 @@
+name: Fly Restore Volume Snapshot
+
+on:
+    workflow_dispatch:
+        inputs:
+            snapshot_id:
+                description: Snapshot ID (vs_...) to restore from
+                required: true
+            replace:
+                description: Replace in place (clone the Machine onto the restored volume, then destroy the old Machine); ignores volume_name
+                type: boolean
+                default: false
+            volume_name:
+                description: Volume name; blank uses the first fly.json mount
+                default: ""
+            region:
+                description: Region; blank reuses the existing volume's
+                default: ""
+            size_gb:
+                description: Size in GB; blank reuses the existing volume's
+                default: ""
+
+jobs:
+    restore:
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v6
+            - uses: ./.github/actions/fly-setup
+              with:
+                  fly-api-token: ${{ secrets.FLY_API_TOKEN }}
+            - uses: ./.github/actions/fly-restore-volume-snapshot
+              with:
+                  snapshot-id: ${{ inputs.snapshot_id }}
+                  replace: ${{ inputs.replace }}
+                  volume-name: ${{ inputs.volume_name }}
+                  region: ${{ inputs.region }}
+                  size-gb: ${{ inputs.size_gb }}

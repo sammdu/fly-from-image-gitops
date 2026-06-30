@@ -1,6 +1,6 @@
 # Fly.io GitOps App Template
 
-Lightweight template for deploying apps to [Fly.io](https://fly.io) from GitHub Actions. The usual path is: edit `fly.json`, add a Dockerfile or Compose file only when needed, map secrets, run bootstrap, then deploy.
+Lightweight template for deploying apps to [Fly.io](https://fly.io) from GitHub Actions. The usual path: edit `fly.json`, add a Dockerfile or Compose file only when needed, map secrets, run bootstrap, then deploy.
 
 For LLM agents adapting this template, read [AGENTS.md](AGENTS.md) first.
 
@@ -9,62 +9,26 @@ For LLM agents adapting this template, read [AGENTS.md](AGENTS.md) first.
 1. Edit `fly.json`: set `app`, `primary_region`, deployment type, and `http_service.internal_port`.
 2. Add the GitHub Actions secret `FLY_API_TOKEN`.
 3. Override `FLY_ORG` in workflow `env` only when you do not deploy to `personal`.
-4. Map app secrets in `.github/workflows/fly-set-secrets.yml`.
-5. Run `Fly Bootstrap`.
-6. Run `Deploy App`, or uncomment the `push` trigger in `.github/workflows/fly-deploy.yml`.
+4. Map app secrets in [`fly-set-secrets.yml`](.github/workflows/fly-set-secrets.yml).
+5. Run [`Fly Bootstrap`](.github/workflows/fly-bootstrap.yml). If `release_command` needs same-app process groups that do not exist yet, pass them in `release_dependency_process_groups`.
+6. Run [`Deploy App`](.github/workflows/fly-deploy.yml), or uncomment its `push` trigger.
 
 ## Deployment Types
 
-Single image:
+Pick one in `fly.json`:
 
-```json
-"build": { "image": "registry.example.com/app:tag" }
-```
+- Prebuilt image: `"build": { "image": "registry.example.com/app:tag" }`
+- Dockerfile: `"build": { "dockerfile": "Dockerfile", "context": "." }`
+- Docker Compose: `"build": { "compose": { "file": "compose.yaml" } }`
+- Custom multi-container Machine: `"experimental": { "machine_config": "cli-config.json" }`
 
-Single Dockerfile:
+**Compose**: [`fly-merge-compose.yml`](.github/workflows/fly-merge-compose.yml) merges optional upstream `urls` and `local` override(s) into `build.compose.file` (with `env-file` for non-secret interpolation, `unescape: "true"` to turn `$$` into `$`), then uploads it as an encrypted artifact since rendered config can embed secrets. Uncomment the `compose` job and the decrypt step in bootstrap/deploy to enable it. Keep persistence in `fly.json` `mounts`, not Compose volumes; flyctl builds the services.
 
-```json
-"build": { "dockerfile": "Dockerfile", "context": "." }
-```
-
-Docker Compose:
-
-```json
-"build": { "compose": { "file": "compose.yaml" } }
-```
-
-Uncomment `fly-compose` before deploy when using Compose. If you use a non-secret interpolation file, pass it as `env-file`:
-
-```yaml
-- uses: ./.github/actions/fly-compose
-  with:
-      env-file: compose.fly.env
-```
-
-Keep Fly Volumes in `fly.json`, not Compose volumes. When every Compose service uses a prebuilt image, pin `build.image` to the primary image and skip `fly-build-image`. Fly native Compose is best when services belong on one multi-container Machine; containers share `localhost`, one service receives inbound proxy traffic, and one service should be buildable.
-
-Custom multi-container Machine:
-
-```json
-"experimental": { "machine_config": "cli-config.json" }
-```
-
-Use this only when Fly config cannot express the Machine shape cleanly. Uncomment `fly-cleanup-machines` if replaced Machines accumulate.
-
-Multi-machine process groups:
-
-```json
-"processes": { "web": "bin/web", "worker": "bin/worker" },
-"services": [
-    { "internal_port": 8080, "processes": ["web"], "protocol": "tcp" }
-]
-```
-
-Scope `services`, `mounts`, and `vm` entries to the intended process groups. Uncomment `fly-scale-processes` after deploy when you want explicit process group Machine counts.
+**Process groups**: declare `processes`, then scope `services`, `mounts`, and `vm` to each group. Uncomment [`fly-scale-processes`](.github/actions/fly-scale-processes/action.yml) to set explicit Machine counts.
 
 ## Secrets
 
-`FLY_API_TOKEN` authenticates the workflows. App secrets are mapped once in `.github/workflows/fly-set-secrets.yml`.
+`FLY_API_TOKEN` authenticates the workflows. Map app secrets once in [`fly-set-secrets.yml`](.github/workflows/fly-set-secrets.yml):
 
 ```yaml
 - uses: ./.github/actions/fly-sync-secrets
@@ -72,14 +36,13 @@ Scope `services`, `mounts`, and `vm` entries to the intended process groups. Unc
       stage: ${{ inputs.stage }}
       secrets: |
           APP_PASSWORD=${{ secrets.APP_PASSWORD }}
-          API_KEY=${{ secrets.API_KEY }}
 ```
 
-Bootstrap imports secrets with `stage: false` after the app exists. Normal deploys stage secrets before deploying.
+Bootstrap imports with `stage: false`; normal deploys stage secrets before deploying.
 
 ## Volumes
 
-Add `mounts` only when the app needs persistent storage. Bootstrap creates missing volumes in `primary_region`.
+Add `mounts` only for persistent storage; bootstrap creates missing volumes in `primary_region`.
 
 ```json
 "mounts": [
@@ -87,43 +50,39 @@ Add `mounts` only when the app needs persistent storage. Bootstrap creates missi
         "source": "app_data",
         "destination": "/app/data",
         "initial_size": "1gb",
-        "auto_extend_size_increment": "1gb",
-        "auto_extend_size_limit": "10gb",
-        "auto_extend_size_threshold": 80,
         "scheduled_snapshots": true,
         "snapshot_retention": 7
     }
 ]
 ```
 
-No default workflow path destroys Machines or volumes. Destructive cleanup actions require `confirm: "true"`.
+No default path destroys Machines or volumes; destructive cleanup needs `confirm: "true"`.
 
 ## Private Apps
 
-For private-network apps, uncomment the workflow `env` block and set the access mode:
+Uncomment the workflow `env` block and set the access mode:
 
 ```yaml
 env:
-    FLY_ACCESS_MODE: flycast
+    FLY_ACCESS_MODE: flycast   # .flycast via Fly Proxy, or "internal" for .internal over 6PN
 ```
 
-Use `flycast` for `.flycast` access through Fly Proxy, or `internal` for `.internal` access over 6PN. Then uncomment `fly-private-network` in bootstrap and deploy. Bootstrap should pass `allocate: "true"` for Flycast. Keep `fly-wireguard-config` enabled after bootstrap and deploy so the workflow creates or reports a reusable private-network peer automatically.
+Then uncomment [`fly-private-network`](.github/actions/fly-private-network/action.yml) in bootstrap and deploy; bootstrap passes `allocate: "true"` for Flycast. Create WireGuard access during bootstrap or with the [manual WireGuard workflow](.github/workflows/fly-wireguard.yml).
+
+## Deploy Readiness
+
+Service `checks` gate routing and updates after a Machine starts; `machine_checks` probe a started target via an ephemeral test Machine (rolling/canary only). Neither starts a stopped Machine — set [`fly-deploy`](.github/actions/fly-deploy/action.yml) `start-process-groups` for groups that must run deploy-time checks. `kill_signal` is `SIGTERM` (some daemons ignore Fly's `SIGINT` default). See [AGENTS.md](AGENTS.md) for the full semantics.
 
 ## Workflows And Actions
 
-- `fly-bootstrap.yml`: create app and volumes, sync secrets, optionally prepare private networking or Compose, then deploy.
-- `fly-deploy.yml`: sync secrets, optionally prepare private networking or Compose, then deploy.
-- `fly-set-secrets.yml`: reusable helper used by both main workflows.
-- `fly-wireguard.yml`: manual utility for rotating private access config.
-- `fly-private-network`: Flycast/internal policy, private IPv6 allocation, and public IP checks.
-- `fly-compose`: validate and optionally render Docker Compose before `flyctl deploy`.
-- `fly-scale-processes`: explicit process group Machine count reconciliation after deploy.
-- `fly-cleanup-volumes`, `fly-cleanup-machines`: optional maintenance actions.
+- [`fly-bootstrap.yml`](.github/workflows/fly-bootstrap.yml): create or reconcile app and volumes, sync secrets, optionally prepare release dependencies, then deploy.
+- [`fly-deploy.yml`](.github/workflows/fly-deploy.yml): sync secrets, optionally prepare private networking or Compose, then deploy.
+- [`fly-set-secrets.yml`](.github/workflows/fly-set-secrets.yml): reusable secret-sync helper for both workflows.
+- [`fly-wireguard.yml`](.github/workflows/fly-wireguard.yml): manual WireGuard access utility.
+- Optional, uncomment or dispatch when needed: [`fly-private-network`](.github/actions/fly-private-network/action.yml), [`fly-merge-compose.yml`](.github/workflows/fly-merge-compose.yml), [`fly-scale-processes`](.github/actions/fly-scale-processes/action.yml), [`fly-cleanup-volumes`](.github/workflows/fly-cleanup-volumes.yml), [`fly-cleanup-machines`](.github/actions/fly-cleanup-machines/action.yml), [`fly-restore-volume-snapshot`](.github/workflows/fly-restore-volume-snapshot.yml), [`fly-migrate-region`](.github/workflows/fly-migrate-region.yml), [`gh-artifact-encrypt-decrypt`](.github/actions/gh-artifact-encrypt-decrypt/action.yml).
 
-Prefer uncommenting existing optional steps over adding duplicate workflow jobs.
+Prefer uncommenting existing optional steps over adding duplicate jobs.
 
 ## Documentation
 
-- [Fly.io Docs](https://fly.io/docs/)
-- [Fly.io Configuration Reference](https://fly.io/docs/reference/configuration/)
-- [Multi-container Machines](https://fly.io/docs/machines/guides-examples/multi-container-machines/)
+- [Fly.io Docs](https://fly.io/docs/) · [Configuration Reference](https://fly.io/docs/reference/configuration/) · [Multi-container Machines](https://fly.io/docs/machines/guides-examples/multi-container-machines/)

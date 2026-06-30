@@ -1,0 +1,35 @@
+name: Fly Merge Compose
+
+on:
+    workflow_call:
+
+jobs:
+    compose:
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v6
+            - uses: ./.github/actions/fly-setup
+              with:
+                  fly-api-token: ${{ secrets.FLY_API_TOKEN }}
+            - uses: ./.github/actions/fly-compose
+              # Pass interpolation secrets through env.
+              # env:
+              #     SECRET_VAR: ${{ secrets.SECRET_VAR }}
+              with:
+                  # urls: https://example.com/compose.yaml
+                  local: compose.fly.yaml
+                  env-file: compose.fly.env
+            # Encrypt rendered secrets before upload.
+            - uses: ./.github/actions/gh-artifact-encrypt-decrypt
+              with:
+                  direction: encrypt
+                  key: ${{ secrets.FLY_API_TOKEN }}
+                  input: compose.yaml
+                  output: compose.yaml.gpg
+            - uses: actions/upload-artifact@v7
+              with:
+                  name: compose
+                  path: compose.yaml.gpg
+                  if-no-files-found: error
+                  retention-days: 1

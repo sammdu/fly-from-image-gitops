@@ -1,53 +1,63 @@
 name: Fly.io Compose
-description: Validate and optionally render Docker Compose before flyctl deploy
+description: Merge upstream URLs and local override(s) into one flat Compose file for flyctl
 
 inputs:
-    file:
-        description: Compose file path; blank reads fly.json build.compose.file
+    urls:
+        description: Whitespace-separated upstream compose YAML URLs, in merge order
         required: false
         default: ""
-    render:
-        description: Render resolved Compose back to the selected file
+    local:
+        description: Local override compose file(s), merged last
         required: false
-        default: "true"
+        default: ""
     env-file:
-        description: Compose interpolation env file
+        description: Env file for non-secret interpolation
         required: false
         default: ""
-
-outputs:
-    file:
-        description: Compose file path processed by this action
-        value: ${{ steps.compose.outputs.file }}
+    dir:
+        description: Directory for downloaded upstream files
+        required: false
+        default: .upstream
+    output:
+        description: Flattened output file flyctl reads (build.compose.file)
+        required: false
+        default: compose.yaml
+    unescape:
+        description: Replace compose $$ escapes with $ in the output
+        required: false
+        default: "false"
 
 runs:
     using: composite
     steps:
-        - id: compose
-          shell: bash
+        - shell: bash
           env:
-              COMPOSE_FILE_INPUT: ${{ inputs.file }}
-              COMPOSE_ENV_FILE: ${{ inputs.env-file }}
-              RENDER_COMPOSE: ${{ inputs.render }}
+              URLS: ${{ inputs.urls }}
+              LOCAL: ${{ inputs.local }}
+              ENV_FILE: ${{ inputs.env-file }}
+              DIR: ${{ inputs.dir }}
+              OUTPUT: ${{ inputs.output }}
+              UNESCAPE: ${{ inputs.unescape }}
           run: |
-              file="$COMPOSE_FILE_INPUT"
-              [ -n "$file" ] || file=$(jq -r '.build.compose.file // empty' fly.json)
+              mkdir -p "$DIR"
+              files=()
+              for url in $URLS; do
+                  dest="$DIR/$(basename "$url")"
+                  wget -qO "$dest" "$url"
+                  files+=(-f "$dest")
+              done
+              for f in $LOCAL; do files+=(-f "$f"); done
 
-              if [ -z "$file" ]; then
-                  echo "No build.compose.file configured."
-                  exit 0
+              if [ ${#files[@]} -eq 0 ]; then
+                  echo "No compose URLs or local files provided."
+                  exit 1
               fi
 
-              compose_args=(-f "$file")
-              [ -n "$COMPOSE_ENV_FILE" ] && compose_args=(--env-file "$COMPOSE_ENV_FILE" "${compose_args[@]}")
+              cmd=(docker compose)
+              [ -n "$ENV_FILE" ] && cmd+=(--env-file "$ENV_FILE")
+              cmd+=("${files[@]}" config --no-normalize)
 
-              docker compose version
-              docker compose "${compose_args[@]}" config --no-normalize --quiet
-              docker compose "${compose_args[@]}" config --services
-
-              if [ "$RENDER_COMPOSE" = "true" ]; then
-                  docker compose "${compose_args[@]}" config --no-normalize > "$RUNNER_TEMP/compose.yaml"
-                  mv "$RUNNER_TEMP/compose.yaml" "$file"
-              fi
-
-              echo "file=$file" >> "$GITHUB_OUTPUT"
+              tmp=$(mktemp)
+              "${cmd[@]}" > "$tmp"
+              if [ "$UNESCAPE" = "true" ]; then sed -i 's/\$\$/\$/g' "$tmp"; fi
+              mv "$tmp" "$OUTPUT"

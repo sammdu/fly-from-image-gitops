@@ -7,7 +7,7 @@ inputs:
         required: false
         default: ""
     match-prefix:
-        description: Peer name prefix to match for existence and recreate cleanup; blank uses generated app prefix when peer-name is blank
+        description: Peer name prefix to match for existence and cleanup; blank uses the app prefix when peer-name is blank
         required: false
         default: ""
     recreate:
@@ -25,7 +25,7 @@ runs:
               WIREGUARD_MATCH_PREFIX: ${{ inputs.match-prefix }}
               RECREATE_WIREGUARD: ${{ inputs.recreate }}
           run: |
-              app_prefix=$(printf '%s' "$FLY_APP_NAME" | cut -c1-10)
+              app_prefix=$(printf '%s' "$FLY_APP" | cut -c1-10)
               short_sha=$(printf '%s' "$GITHUB_SHA" | cut -c1-4)
               peer="$WIREGUARD_PEER_NAME"
               [ -n "$peer" ] || peer="$app_prefix-$short_sha"
@@ -42,9 +42,9 @@ runs:
               peers=$(flyctl wireguard list "$FLY_ORG" --json | tee /dev/stderr)
 
               if [ -n "$match_prefix" ]; then
-                  matching_peers=$(printf '%s\n' "$peers" | jq -r --arg prefix "$match_prefix" '.[] | (.Name // .name // "") | select(startswith($prefix))')
+                  matching_peers=$(jq -r --arg prefix "$match_prefix" '.[] | (.Name // .name // "") | select(startswith($prefix))' <<< "$peers")
               else
-                  matching_peers=$(printf '%s\n' "$peers" | jq -r --arg peer "$peer" '.[] | (.Name // .name // "") | select(. == $peer)')
+                  matching_peers=$(jq -r --arg peer "$peer" '.[] | (.Name // .name // "") | select(. == $peer)' <<< "$peers")
               fi
 
               if [ "$recreate" = "true" ] && [ -n "$matching_peers" ]; then

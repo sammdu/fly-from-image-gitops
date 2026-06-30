@@ -1,7 +1,11 @@
 name: Fly.io Cleanup Volumes
-description: List and optionally delete unattached or orphaned Fly.io volumes
+description: List and optionally delete unattached, stuck (pending_destroy), or orphaned Fly.io volumes
 
 inputs:
+    volume:
+        description: Target one volume id to destroy; blank runs bulk cleanup
+        required: false
+        default: ""
     confirm:
         description: Set to "true" to destroy listed volumes
         required: false
@@ -17,34 +21,47 @@ runs:
         - name: Cleanup volumes
           shell: bash
           env:
+              TARGET_VOLUME: ${{ inputs.volume }}
               CONFIRM: ${{ inputs.confirm }}
               CLEANUP_ORPHANED: ${{ inputs.orphaned }}
           run: |
-              echo "Fetching volumes for app: $FLY_APP_NAME"
-              volumes=$(flyctl volumes list --app "$FLY_APP_NAME" --json)
-              unattached=$(echo "$volumes" | jq -r '.[] | select(.attached_machine_id == null or .attached_machine_id == "") | .id')
-
-              if [ -n "$unattached" ]; then
-                  echo "Found unattached volumes:"
-                  echo "$volumes" | jq '.[] | select(.attached_machine_id == null or .attached_machine_id == "") | {id, name, region, size_gb, created_at}'
-              else
-                  echo "No unattached volumes found."
+              # Destroy one volume by id; list first to log its state.
+              if [ -n "$TARGET_VOLUME" ]; then
+                  flyctl volumes list --all
+                  flyctl volumes destroy "$TARGET_VOLUME" --yes --verbose
+                  exit 0
               fi
 
-              if [ "$CONFIRM" = "true" ] && [ -n "$unattached" ]; then
-                  echo "$unattached" | while read -r vol_id; do
+              echo "Fetching volumes for app: $FLY_APP"
+              # --all includes pending_destroy volumes the default list hides.
+              volumes=$(flyctl volumes list --all --json)
+
+              # Candidates: volumes created & unattached, or stuck in pending_destroy
+              # In-progress states are skipped so a volume mid-operation is never destroyed.
+              candidate_filter='.[] | select((.state == "created" and (.attached_machine_id == null or .attached_machine_id == "")) or .state == "pending_destroy")'
+              candidates=$(echo "$volumes" | jq -r "$candidate_filter | .id")
+
+              if [ -n "$candidates" ]; then
+                  echo "Volumes eligible for cleanup:"
+                  echo "$volumes" | jq "$candidate_filter | {id, name, state, region, size_gb, attached_machine_id, created_at}"
+              else
+                  echo "No unattached or stuck volumes found."
+              fi
+
+              if [ "$CONFIRM" = "true" ] && [ -n "$candidates" ]; then
+                  echo "$candidates" | while read -r vol_id; do
                       [ -z "$vol_id" ] && continue
-                      flyctl volumes destroy "$vol_id" --app "$FLY_APP_NAME" --yes --verbose
+                      flyctl volumes destroy "$vol_id" --yes --verbose
                   done
               fi
 
               if [ "$CLEANUP_ORPHANED" != "true" ]; then
-                  [ "$CONFIRM" != "true" ] && echo "Deletion is disabled. Set confirm: \"true\" to destroy listed unattached volumes."
+                  [ "$CONFIRM" != "true" ] && echo "Deletion is disabled. Set confirm: \"true\" to destroy listed volumes."
                   exit 0
               fi
 
               mounts=$(jq -c '.mounts // []' fly.json)
-              attached=$(echo "$volumes" | jq -r '.[] | select(.attached_machine_id) | [.id, .name, .attached_machine_id] | @tsv')
+              attached=$(echo "$volumes" | jq -r '.[] | select(.state == "created" and .attached_machine_id) | [.id, .name, .attached_machine_id] | @tsv')
 
               if [ -z "$attached" ]; then
                   echo "No attached volumes found."
@@ -66,9 +83,9 @@ runs:
                       continue
                   fi
 
-                  flyctl volumes snapshots create "$vol_id" --app "$FLY_APP_NAME" --verbose
-                  flyctl machine destroy "$machine_id" --app "$FLY_APP_NAME" --force --verbose
-                  flyctl volumes destroy "$vol_id" --app "$FLY_APP_NAME" --yes --verbose
+                  flyctl volumes snapshots create "$vol_id" --verbose
+                  flyctl machine destroy "$machine_id" --force --verbose
+                  flyctl volumes destroy "$vol_id" --yes --verbose
               done <<< "$attached"
 
               if [ "$found_orphaned" = "false" ]; then

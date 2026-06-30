@@ -17,6 +17,7 @@
         "internal_port": 8080,
         "min_machines_running": 0
     },
+    "kill_signal": "SIGTERM",
     "kill_timeout": 20,
     "vm": [
         {

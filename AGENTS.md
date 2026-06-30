@@ -32,6 +32,9 @@ Use this guidance when adapting this template for a specific application.
 ## Reason About Fly Semantics
 
 - Treat health checks as deploy and proxy readiness contracts, not broad dependency tests.
+- Service HTTP/TCP checks gate routing and updates after a Machine starts; they do not start stopped Machines.
+- Machine checks use an ephemeral test Machine to probe a started deployment target through `FLY_TEST_MACHINE_IP`; they run only for rolling and canary deploys and do not start stopped targets.
+- `release_command` is for one-off setup or migrations without mounted volumes. It replaces `CMD`, preserves `ENTRYPOINT`, and must remain compatible with the currently deployed release.
 - Distinguish deploy success, proxy routing, public listener availability, and internal dependency readiness before changing checks or startup behavior.
 - Avoid checks that wake or block on databases, queues, caches, or external APIs unless that is the intended readiness contract; distinguish "the app can answer traffic" from "every downstream dependency is ready."
 - For scale-to-zero apps, make cost, wakeup behavior, and reliability tradeoffs explicit before keeping any process warm.
@@ -40,6 +43,7 @@ Use this guidance when adapting this template for a specific application.
 - Map upstream image, Dockerfile, Compose, and script assumptions onto Fly limits before editing: build/runtime boundaries, global runtime secrets, ignored Compose volumes, release commands without volumes, proxy target selection, and app-injected `FLY_*` variables.
 - For private services that need wake-on-request behavior, verify the traffic path before changing networking or readiness logic.
 - Use pre-release or deploy-blocking hooks only when failing before rollout is clearly better than letting the app boot and report health.
+- `kill_signal` (Fly default `SIGINT`) is sent to each container on stop and deploy; prefer `SIGTERM` and verify the main process shuts down cleanly on it (some daemons ignore `SIGINT`, e.g. MariaDB/MySQL), or it is `SIGKILL`ed at `kill_timeout`.
 
 ## Keep Startup Simple
 
@@ -96,15 +100,13 @@ Use this guidance when adapting this template for a specific application.
 ## Official Docs And Sources
 
 - Proactively read official Fly.io docs for deployment, Machines, networking, health checks, secrets, and workflow questions. Use them to challenge existing assumptions before planning or editing.
-- Prefer raw markdown from `https://raw.githubusercontent.com/superfly/docs/main/` over rendered pages from `https://fly.io/docs/`.
+- Prefer raw sources under `https://raw.githubusercontent.com/superfly/docs/refs/heads/main/` over rendered pages from `https://fly.io/docs/`.
 - Pair Fly docs with flyctl source when behavior depends on current parser or translator support.
 - Treat Docker Compose, GitHub Actions, upstream image, and upstream app documentation as first-class sources when interpolation, workflows, image behavior, or app setup is involved.
 - When a provided URL matches the patterns below, transform it proactively and read the raw source before reasoning from the rendered page.
 - Fly.io docs URL mapping patterns:
-  - `https://fly.io/docs/<path>/` -> `https://raw.githubusercontent.com/superfly/docs/main/<path>.md`
-  - `https://fly.io/docs/<path>/` -> `https://raw.githubusercontent.com/superfly/docs/main/<path>.html.md`
-  - `https://fly.io/docs/<path>/` -> `https://raw.githubusercontent.com/superfly/docs/main/<path>.html.markerb`
-  - `https://fly.io/docs/flyctl/<command>/` -> `https://raw.githubusercontent.com/superfly/docs/main/flyctl/cmd/fly_<command>.md`
+  - Map `<path>` to the same path under `https://raw.githubusercontent.com/superfly/docs/refs/heads/main/`.
+  - Try `.html.md`, `.html.markerb`, and `.md`; for section roots, insert `/index` before the suffix. Generated flyctl command pages may live under `flyctl/cmd/`.
 - GitHub docs URL mapping patterns:
   - `https://github.com/<owner>/<repo>/blob/<branch>/<path>` -> `https://raw.githubusercontent.com/<owner>/<repo>/refs/heads/<branch>/<path>`
   - `https://github.com/<owner>/<repo>/blob/<tag>/<path>` -> `https://raw.githubusercontent.com/<owner>/<repo>/refs/tags/<tag>/<path>`

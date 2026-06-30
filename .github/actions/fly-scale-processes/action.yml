@@ -13,4 +13,4 @@ runs:
           shell: bash
           env:
               COUNTS: ${{ inputs.counts }}
-          run: flyctl scale count $COUNTS --app "$FLY_APP_NAME" --yes --verbose
+          run: flyctl scale count $COUNTS --yes --verbose
