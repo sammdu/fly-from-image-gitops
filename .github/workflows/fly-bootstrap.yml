@@ -8,23 +8,12 @@ on:
                 required: false
                 default: ""
 
-# env:
-#     FLY_ACCESS_MODE: flycast
-
 jobs:
     provision:
-        runs-on: ubuntu-latest
-
-        steps:
-            - uses: actions/checkout@v6
-            - uses: ./.github/actions/fly-setup
-              with:
-                  fly-api-token: ${{ secrets.FLY_API_TOKEN }}
-            - uses: ./.github/actions/fly-provision
-            # Optional: allocate/enforce private Flycast access (set FLY_ACCESS_MODE: flycast in env first).
-            # - uses: ./.github/actions/fly-private-network
-            #   with:
-            #       allocate: "true"
+        uses: ./.github/workflows/fly-network.yml
+        with:
+            operation: provision
+        secrets: inherit
 
     set-secrets:
         needs: provision
@@ -48,8 +37,6 @@ jobs:
             - uses: ./.github/actions/fly-setup
               with:
                   fly-api-token: ${{ secrets.FLY_API_TOKEN }}
-            # Optional: enforce private-only access before deploy.
-            # - uses: ./.github/actions/fly-private-network
             # Compose: download and decrypt the rendered file.
             # - uses: actions/download-artifact@v8
             #   with:
@@ -73,5 +60,10 @@ jobs:
               with:
                   image: ${{ steps.build-image.outputs.image }}
             - uses: ./.github/actions/fly-access-url
-            # Print or reuse WireGuard access for private apps.
-            # - uses: ./.github/actions/fly-wireguard-config
+
+    wireguard:
+        needs: deploy
+        uses: ./.github/workflows/fly-network.yml
+        with:
+            operation: vend
+        secrets: inherit

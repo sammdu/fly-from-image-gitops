@@ -7,9 +7,11 @@ runs:
         - name: Provision app and volumes
           shell: bash
           run: |
-              app_exists=$(flyctl apps list --json | jq -r --arg name "$FLY_APP" '.[] | select(.Name == $name) | .Name')
+              app_exists=$(flyctl apps list --org "$FLY_ORG" --json | jq -r --arg name "$FLY_APP" '.[] | select(.Name == $name) | .Name')
               if [ -z "$app_exists" ]; then
-                  flyctl apps create "$FLY_APP" --org "$FLY_ORG" --verbose
+                  app_args=("$FLY_APP" --org "$FLY_ORG" --verbose)
+                  [ -n "$FLY_ACCESS_MODE" ] && app_args+=(--network "$FLY_NETWORK")
+                  flyctl apps create "${app_args[@]}"
               fi
 
               jq -c '.mounts // [] | .[]' fly.json | while read -r mount; do

@@ -1,0 +1,58 @@
+name: Fly Network
+
+on:
+    workflow_call:
+        inputs:
+            operation:
+                description: Verify or provision networking, create a network, or manage peers
+                type: string
+                default: verify
+            peer_name:
+                description: WireGuard peer name; blank uses the app name
+                type: string
+                default: ""
+    workflow_dispatch:
+        inputs:
+            operation:
+                description: Verify access, list peers, create a network, vend a config, or revoke a peer
+                type: choice
+                options: [verify, list, create, vend, revoke]
+                required: true
+                default: list
+            peer_name:
+                description: WireGuard peer name; blank uses the app name
+                required: false
+                default: ""
+
+env:
+    FLY_ORG: personal
+    FLY_ACCESS_MODE: ""
+
+jobs:
+    network:
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v6
+            - uses: ./.github/actions/fly-setup
+              with:
+                  fly-api-token: ${{ secrets.FLY_API_TOKEN }}
+            - if: inputs.operation == 'provision'
+              uses: ./.github/actions/fly-provision
+            - if: (inputs.operation == 'verify' || inputs.operation == 'provision') && env.FLY_ACCESS_MODE != ''
+              uses: ./.github/actions/fly-private-network
+              with:
+                  allocate: ${{ inputs.operation == 'provision' }}
+            - if: inputs.operation == 'list' || inputs.operation == 'revoke' || (inputs.operation == 'vend' && env.FLY_ACCESS_MODE != '')
+              uses: ./.github/actions/fly-wireguard-config
+              with:
+                  operation: ${{ inputs.operation }}
+                  peer-name: ${{ inputs.peer_name }}
+            - if: inputs.operation == 'create'
+              name: Create app-specific network
+              shell: bash
+              run: |
+                  seed_app="net-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+                  flyctl apps create "$seed_app" --org "$FLY_ORG" --network "$FLY_NETWORK"
+                  flyctl apps destroy "$seed_app" --yes
+                  echo "Created network '$FLY_NETWORK' in '$FLY_ORG' for '$FLY_APP'." | tee -a "$GITHUB_STEP_SUMMARY"

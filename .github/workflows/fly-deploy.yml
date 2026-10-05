@@ -5,10 +5,11 @@ on:
     # push:
     #     branches: [main]
 
-# env:
-#     FLY_ACCESS_MODE: flycast
-
 jobs:
+    network:
+        uses: ./.github/workflows/fly-network.yml
+        secrets: inherit
+
     set-secrets:
         uses: ./.github/workflows/fly-set-secrets.yml
         with:
@@ -21,7 +22,7 @@ jobs:
     #     secrets: inherit
 
     deploy:
-        needs: set-secrets
+        needs: [set-secrets, network]
         runs-on: ubuntu-latest
 
         steps:
@@ -29,8 +30,6 @@ jobs:
             - uses: ./.github/actions/fly-setup
               with:
                   fly-api-token: ${{ secrets.FLY_API_TOKEN }}
-            # Optional: enforce private-only access before deploy.
-            # - uses: ./.github/actions/fly-private-network
             # Compose: download and decrypt the rendered file.
             # - uses: actions/download-artifact@v8
             #   with:
@@ -47,8 +46,6 @@ jobs:
               with:
                   image: ${{ steps.build-image.outputs.image }}
             - uses: ./.github/actions/fly-access-url
-            # Print or reuse WireGuard access for private apps.
-            # - uses: ./.github/actions/fly-wireguard-config
             # Optional: reconcile process group Machine counts after deploy.
             # - uses: ./.github/actions/fly-scale-processes
             #   with:

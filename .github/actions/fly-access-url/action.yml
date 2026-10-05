@@ -10,10 +10,8 @@ runs:
               ips=$(flyctl ips list --json)
               has_private=$(jq -r 'any(.[]; ((.Type // .type // "") | ascii_downcase) | contains("private"))' <<< "$ips")
               has_public=$(jq -r 'any(.[]; ((.Type // .type // "") | ascii_downcase | contains("private") | not))' <<< "$ips")
-              {
-                  echo "### Fly.io app URLs"
-                  echo
-                  [ "$has_public" = "true" ] && echo "- https://${FLY_APP}.fly.dev"
-                  [ "$has_private" = "true" ] && echo "- http://${FLY_APP}.flycast"
-                  echo "- http://${FLY_APP}.internal"
-              } | tee -a "$GITHUB_STEP_SUMMARY"
+              summary=("### Fly.io app URLs" "")
+              [ "$has_public" = "true" ] && summary+=("- https://${FLY_APP}.fly.dev")
+              [ "$has_private" = "true" ] && summary+=("- http://${FLY_APP}.flycast")
+              summary+=("- http://${FLY_APP}.internal")
+              printf '%s\n' "${summary[@]}" | tee -a "$GITHUB_STEP_SUMMARY"

@@ -31,7 +31,7 @@ runs:
           run: |
               app_exists=$(flyctl apps list --json | jq -r --arg name "$FLY_APP" '.[] | select(.Name == $name) | .Name')
               if [ -z "$app_exists" ]; then
-                  echo "App '$FLY_APP' not found. Run the Fly Bootstrap workflow first."
+                  echo "App '$FLY_APP' not found. Run fly-bootstrap first."
                   exit 1
               fi
         - name: Start deployed Machines

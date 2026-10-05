@@ -17,30 +17,19 @@ runs:
           run: |
               app_name=$(jq -r '.app // ""' fly.json)
               primary_region=$(jq -r '.primary_region // ""' fly.json)
-              org_name="$FLY_ORG"
-              if [ -z "$org_name" ]; then
-                  org_name="personal"
-              fi
+              case "$FLY_ACCESS_MODE" in
+                  ""|internal|flycast) ;;
+                  *) echo "FLY_ACCESS_MODE must be internal or flycast, or empty for public apps."; exit 1 ;;
+              esac
 
-              if [ -z "$FLY_API_TOKEN" ]; then
-                  echo "Missing fly-api-token"
-                  exit 1
-              fi
+              [ -z "$FLY_API_TOKEN" ] && echo "Missing fly-api-token" && exit 1
+              [ -z "$app_name" ] && echo "Missing .app in fly.json" && exit 1
+              [ -z "$primary_region" ] && echo "Missing .primary_region in fly.json" && exit 1
 
-              if [ -z "$app_name" ]; then
-                  echo "Missing .app in fly.json"
-                  exit 1
-              fi
-
-              if [ -z "$primary_region" ]; then
-                  echo "Missing .primary_region in fly.json"
-                  exit 1
-              fi
-
-              # FLY_APP and FLY_API_TOKEN are native flyctl vars, so later steps need no --app.
+              # Native flyctl variables select the app and authenticate later steps.
               cat >> "$GITHUB_ENV" <<EOF
               FLY_API_TOKEN=$FLY_API_TOKEN
               FLY_APP=$app_name
               FLY_PRIMARY_REGION=$primary_region
-              FLY_ORG=$org_name
+              FLY_NETWORK=app-$app_name
               EOF

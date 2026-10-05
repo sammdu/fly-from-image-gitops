@@ -22,13 +22,6 @@ runs:
           run: |
               mode="$ACCESS_MODE"
               [ -n "$mode" ] || mode="$FLY_ACCESS_MODE"
-
-              ips_json=$(flyctl ips list --json)
-              private_v6=$(echo "$ips_json" | jq -r '.[] | select(((.Type // .type // "") | ascii_downcase) | contains("private")) | (.IP // .ip // empty)' | head -n 1)
-
-              if [ -z "$mode" ] && [ -n "$private_v6" ]; then
-                  mode="flycast"
-              fi
               [ -n "$mode" ] || mode="internal"
 
               if [ "$mode" != "flycast" ] && [ "$mode" != "internal" ]; then
@@ -36,20 +29,29 @@ runs:
                   exit 1
               fi
 
-              if [ "$mode" = "flycast" ] && [ "$ALLOCATE_PRIVATE_IP" = "true" ]; then
-                  if [ -z "$private_v6" ]; then
-                      flyctl ips allocate-v6 --private --verbose
-                      ips_json=$(flyctl ips list --json)
-                  else
-                      echo "Private Flycast IPv6 already allocated: $private_v6"
-                  fi
-              fi
-
-              public_ips=$(echo "$ips_json" | jq -r '.[] | select(((.Type // .type // "") | ascii_downcase) | contains("public")) | (.IP // .ip // empty)')
-
-              if [ -n "$public_ips" ]; then
-                  echo "Public IPs are attached to private app '$FLY_APP':"
-                  echo "$public_ips"
-                  echo "Release them with: fly ips release <ip> --app $FLY_APP"
+              app_network=$(flyctl apps list --org "$FLY_ORG" --json | jq -r --arg app "$FLY_APP" '.[] | select(.Name == $app) | if .Network == "" then "default" else .Network end')
+              echo "App: $FLY_APP; organization: $FLY_ORG; Machine network: $app_network; client network: $FLY_NETWORK" | tee -a "$GITHUB_STEP_SUMMARY"
+              if [ "$mode" = "internal" ] && [ "$app_network" != "$FLY_NETWORK" ]; then
+                  echo "Direct internal access requires app '$FLY_APP' on '$FLY_NETWORK'."
                   exit 1
               fi
+
+              ips_json=$(flyctl ips list --json)
+              public_ips=$(jq -r '.[] | select(.Type == "v4" or .Type == "v6" or .Type == "shared_v4") | .Address' <<< "$ips_json")
+              if [ -n "$public_ips" ]; then
+                  echo "Remove public ingress IPs from app '$FLY_APP': $public_ips"
+                  exit 1
+              fi
+
+              private_v6=$(jq -r --arg network "$FLY_NETWORK" '.[] | select(.Type == "private_v6" and .Network.Name == $network) | .Address' <<< "$ips_json")
+              if [ "$mode" = "flycast" ] && [ -z "$private_v6" ]; then
+                  if [ "$ALLOCATE_PRIVATE_IP" != "true" ]; then
+                      echo "Missing Flycast IP on '$FLY_NETWORK'. Run fly-network with vend or fly-bootstrap."
+                      exit 1
+                  fi
+                  flyctl ips allocate-v6 --private --network "$FLY_NETWORK" --verbose
+                  ips_json=$(flyctl ips list --json)
+              fi
+
+              ip_summary=$(jq -r '.[] | [.Type, .Address, (.Network.Name // "-")] | @tsv' <<< "$ips_json")
+              printf '```text\nTYPE\tADDRESS\tNETWORK\n%s\n```\n' "$ip_summary" | tee -a "$GITHUB_STEP_SUMMARY"

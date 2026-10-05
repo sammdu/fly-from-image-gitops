@@ -100,13 +100,13 @@ Use this guidance when adapting this template for a specific application.
 ## Official Docs And Sources
 
 - Proactively read official Fly.io docs for deployment, Machines, networking, health checks, secrets, and workflow questions. Use them to challenge existing assumptions before planning or editing.
-- Prefer raw sources under `https://raw.githubusercontent.com/superfly/docs/refs/heads/main/` over rendered pages from `https://fly.io/docs/`.
-- Pair Fly docs with flyctl source when behavior depends on current parser or translator support.
+- Prefer direct Markdown at `https://docs.fly.io/<path>.md` for Fly.io documentation.
+- Pair Fly docs with flyctl source when behavior depends on current parser or translator support. Shallow-clone source repositories into a temporary directory and navigate them with `ast-grep`.
 - Treat Docker Compose, GitHub Actions, upstream image, and upstream app documentation as first-class sources when interpolation, workflows, image behavior, or app setup is involved.
-- When a provided URL matches the patterns below, transform it proactively and read the raw source before reasoning from the rendered page.
+- When a provided URL matches the patterns below, transform it proactively and read the Markdown before reasoning from the rendered page.
 - Fly.io docs URL mapping patterns:
-  - Map `<path>` to the same path under `https://raw.githubusercontent.com/superfly/docs/refs/heads/main/`.
-  - Try `.html.md`, `.html.markerb`, and `.md`; for section roots, insert `/index` before the suffix. Generated flyctl command pages may live under `flyctl/cmd/`.
+    - Map `https://fly.io/docs/<path>/` to `https://docs.fly.io/<path>.md`.
+    - If direct Markdown is unavailable, use the rendered page. Shallow-clone `https://github.com/superfly/docs` to inspect its source; the source filename may differ from the public path.
 - GitHub docs URL mapping patterns:
   - `https://github.com/<owner>/<repo>/blob/<branch>/<path>` -> `https://raw.githubusercontent.com/<owner>/<repo>/refs/heads/<branch>/<path>`
   - `https://github.com/<owner>/<repo>/blob/<tag>/<path>` -> `https://raw.githubusercontent.com/<owner>/<repo>/refs/tags/<tag>/<path>`
