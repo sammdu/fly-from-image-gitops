@@ -19,10 +19,6 @@ concurrency:
     cancel-in-progress: false
 
 jobs:
-    network:
-        uses: ./.github/workflows/fly-network.yml
-        secrets: inherit
-
     set-secrets:
         uses: ./.github/workflows/fly-set-secrets.yml
         with:
@@ -35,7 +31,7 @@ jobs:
     #     secrets: inherit
 
     deploy:
-        needs: [network, set-secrets]
+        needs: set-secrets
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v6

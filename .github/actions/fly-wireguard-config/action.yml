@@ -1,11 +1,11 @@
-name: Fly.io WireGuard
-description: List or revoke organization peers, or vend an app-network VPN config
+name: Fly.io WireGuard Config
+description: Create a private network, list or revoke peers, or vend a WireGuard config
 
 inputs:
     operation:
-        description: list, vend, or revoke
+        description: Networking Operation
         required: false
-        default: vend
+        default: Vend WireGuard config
     peer-name:
         description: WireGuard peer name; blank uses the app name
         required: false
@@ -14,11 +14,7 @@ inputs:
 runs:
     using: composite
     steps:
-        - if: inputs.operation == 'vend'
-          uses: ./.github/actions/fly-private-network
-          with:
-              allocate: "true"
-        - name: Manage WireGuard peers
+        - name: ${{ inputs.operation }}
           id: peer
           shell: bash
           env:
@@ -28,12 +24,18 @@ runs:
               peer="$WIREGUARD_PEER_NAME"
               [ -n "$peer" ] || peer="$FLY_APP"
 
-              # Handle listing and revocation before preparing a new config.
               case "$WIREGUARD_OPERATION" in
-                  list) flyctl wireguard list "$FLY_ORG"; exit ;;
-                  revoke) flyctl wireguard remove "$FLY_ORG" "$peer"; exit ;;
-                  vend) ;;
-                  *) echo "WireGuard operation must be list, vend, or revoke."; exit 1 ;;
+                  "Create private network")
+                      # A network persists after its last app is deleted.
+                      seed_app="net-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+                      flyctl apps create "$seed_app" --org "$FLY_ORG" --network "$FLY_NETWORK"
+                      flyctl apps destroy "$seed_app" --yes
+                      echo "Created network '$FLY_NETWORK' in '$FLY_ORG' for '$FLY_APP'." | tee -a "$GITHUB_STEP_SUMMARY"
+                      exit ;;
+                  "List WireGuard peers") flyctl wireguard list "$FLY_ORG"; exit ;;
+                  "Revoke WireGuard peer") flyctl wireguard remove "$FLY_ORG" "$peer"; exit ;;
+                  "Vend WireGuard config") ;;
+                  *) echo "Unknown WireGuard operation: $WIREGUARD_OPERATION"; exit 1 ;;
               esac
 
               existing_peer=$(flyctl wireguard list "$FLY_ORG" --json | jq -r --arg peer "$peer" '.[] | select(.Name == $peer) | .Name')

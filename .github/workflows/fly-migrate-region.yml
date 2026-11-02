@@ -1,10 +1,10 @@
-name: Fly Migrate Region
+name: Fly Migrate Region to Match fly.json
 
 on:
     workflow_dispatch:
         inputs:
             confirm:
-                description: Apply migration to primary region
+                description: Apply migration (leave unchecked to preview)
                 type: boolean
                 default: false
 

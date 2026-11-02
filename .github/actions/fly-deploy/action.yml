@@ -47,6 +47,12 @@ runs:
               configured_image=$(jq -r '.build.image // empty' fly.json)
               deploy_args=(--config fly.json --ha="${{ inputs.enable-ha-with-no-volumes }}" --yes --debug --verbose)
 
+              # Preserve the app's existing IP settings, including apps without IPs.
+              ips=$(flyctl ips list --json)
+              if ! jq -e 'any(.[]; .Type == "v4" or .Type == "v6" or .Type == "shared_v4")' <<< "$ips"; then
+                  deploy_args+=(--no-public-ips)
+              fi
+
               # Apply rollout overrides before choosing the deployment image.
               if [ "${{ inputs.skip-release-command }}" = "true" ]; then
                   deploy_args+=(--skip-release-command)

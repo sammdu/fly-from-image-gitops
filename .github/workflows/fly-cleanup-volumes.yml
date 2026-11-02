@@ -7,7 +7,7 @@ on:
                 description: Volume ID (unset = all unattached)
                 default: ""
             confirm:
-                description: Apply deletion
+                description: Apply deletion (leave unchecked to preview)
                 type: boolean
                 default: false
             # With deletion enabled, also remove attached volumes absent from fly.json mounts and their Machines.

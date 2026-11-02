@@ -4,20 +4,20 @@ on:
     workflow_dispatch:
         inputs:
             snapshot_id:
-                description: Snapshot ID (vs_...)
+                description: Snapshot ID
                 required: true
             replace:
-                description: Replace in place
+                description: Replace Machine to Attached Restored Volume
                 type: boolean
                 default: false
             volume_name:
-                description: Volume name (or original)
+                description: Volume name (unset = keep original)
                 default: ""
             region:
-                description: Region (or original)
+                description: Region (unset = keep original)
                 default: ""
             size_gb:
-                description: Size in GB (or original)
+                description: Size in GB (unset = keep original)
                 default: ""
 
 concurrency:

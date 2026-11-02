@@ -21,11 +21,6 @@ runs:
           run: |
               app_name=$(jq -r '.app // ""' fly.json)
               primary_region=$(jq -r '.primary_region // ""' fly.json)
-              case "$FLY_ACCESS_MODE" in
-                  ""|internal|flycast) ;;
-                  *) echo "FLY_ACCESS_MODE must be internal or flycast, or empty for public apps."; exit 1 ;;
-              esac
-
               [ -z "$FLY_API_TOKEN" ] && echo "Missing fly-api-token" && exit 1
               [ -z "$app_name" ] && echo "Missing .app in fly.json" && exit 1
               [ -z "$primary_region" ] && echo "Missing .primary_region in fly.json" && exit 1

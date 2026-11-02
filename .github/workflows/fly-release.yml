@@ -9,11 +9,23 @@ on:
 
 jobs:
     provision:
-        uses: ./.github/workflows/fly-network.yml
-        with:
-            operation: provision
+        runs-on: ubuntu-latest
+        env:
             FLY_ORG: personal
-        secrets: inherit
+            FLY_ACCESS_MODE: "" # internal, flycast, or empty for public apps
+        steps:
+            - uses: actions/checkout@v6
+            - uses: ./.github/actions/fly-setup
+              with:
+                  fly-api-token: ${{ secrets.FLY_API_TOKEN }}
+                  fly-org: ${{ env.FLY_ORG }}
+            - uses: ./.github/actions/fly-provision
+              with:
+                  access-mode: ${{ env.FLY_ACCESS_MODE }}
+            - if: env.FLY_ACCESS_MODE != ''
+              uses: ./.github/actions/fly-wireguard-config
+              with:
+                  operation: Vend WireGuard config
 
     deploy:
         needs: provision
@@ -21,11 +33,4 @@ jobs:
         with:
             initial_deploy: true
             release_dependency_process_groups: ${{ inputs.release_dependency_process_groups }}
-        secrets: inherit
-
-    network:
-        needs: deploy
-        uses: ./.github/workflows/fly-network.yml
-        with:
-            operation: vend
         secrets: inherit

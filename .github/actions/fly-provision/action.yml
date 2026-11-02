@@ -1,16 +1,29 @@
 name: Fly.io Provision
-description: Create the Fly.io app and any volumes declared in fly.json
+description: Provision the app, networking, and volumes declared in fly.json
+
+inputs:
+    access-mode:
+        description: internal, flycast, or empty for public apps
+        default: ""
 
 runs:
     using: composite
     steps:
         - name: Provision app and volumes
           shell: bash
+          env:
+              ACCESS_MODE: ${{ inputs.access-mode }}
           run: |
+              case "$ACCESS_MODE" in
+                  ""|internal|flycast) ;;
+                  *) echo "access-mode must be internal or flycast, or empty for public apps."; exit 1 ;;
+              esac
+
+              # Choose the Machine network when creating the app.
               app_exists=$(flyctl apps list --org "$FLY_ORG" --json | jq -r --arg name "$FLY_APP" '.[] | select(.Name == $name) | .Name')
               if [ -z "$app_exists" ]; then
                   app_args=("$FLY_APP" --org "$FLY_ORG" --verbose)
-                  [ -n "$FLY_ACCESS_MODE" ] && app_args+=(--network "$FLY_NETWORK")
+                  [ -n "$ACCESS_MODE" ] && app_args+=(--network "$FLY_NETWORK")
                   flyctl apps create "${app_args[@]}"
               fi
 
@@ -41,3 +54,20 @@ runs:
 
                   flyctl volumes create "${volume_args[@]}"
               done
+        - if: inputs.access-mode == ''
+          name: Configure public access
+          shell: bash
+          run: |
+              ips=$(flyctl ips list --json)
+
+              # Remove app-network Flycast IPs while retaining backend connections.
+              jq -r --arg network "$FLY_NETWORK" '.[] | select(.Type == "private_v6" and .Network.Name == $network) | .Address' <<< "$ips" | xargs -r flyctl ips release
+
+              if ! jq -e 'any(.[]; .Type == "v4" or .Type == "v6" or .Type == "shared_v4")' <<< "$ips"; then
+                  flyctl ips allocate-v4 --shared
+                  flyctl ips allocate-v6
+              fi
+        - if: inputs.access-mode != ''
+          uses: ./.github/actions/fly-private-network
+          with:
+              access-mode: ${{ inputs.access-mode }}

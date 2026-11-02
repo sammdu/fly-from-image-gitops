@@ -8,7 +8,7 @@ For LLM agents adapting this template, read [AGENTS.md](AGENTS.md) first.
 
 1. Edit `fly.json`: set `app`, `primary_region`, deployment type, and `http_service.internal_port`.
 2. Add the GitHub Actions secret `FLY_API_TOKEN`.
-3. Set `FLY_ORG` in [`fly-release`](.github/workflows/fly-release.yml); it defaults to `personal`. Set `FLY_ACCESS_MODE` in [`fly-network`](.github/workflows/fly-network.yml): `internal`, `flycast`, or empty for public apps.
+3. Set `FLY_ORG` and `FLY_ACCESS_MODE` in [`fly-release`](.github/workflows/fly-release.yml). The organization defaults to `personal`; access mode is `internal`, `flycast`, or empty for public apps.
 4. Map app secrets in [`fly-set-secrets`](.github/workflows/fly-set-secrets.yml).
 5. Run [`fly-release`](.github/workflows/fly-release.yml). Pass process groups needed by `release_command` in `release_dependency_process_groups`.
 6. Run [`fly-deploy`](.github/workflows/fly-deploy.yml), or uncomment its `push` trigger.
@@ -62,11 +62,13 @@ Shrinking requires downtime and changes the Machine ID. If copying fails, the or
 
 ## Private Apps
 
-[`fly-release`](.github/workflows/fly-release.yml) creates private apps on `app-<app name>` and issues a WireGuard config. [`fly-deploy`](.github/workflows/fly-deploy.yml) checks private access and rejects public ingress IPs. Flycast provides native suspend/wakeup; direct `.internal` access requires running Machines.
+[`fly-release`](.github/workflows/fly-release.yml) creates private apps on `app-<app name>` and issues a WireGuard config. Rerun it after changing `FLY_ACCESS_MODE` to apply access changes. [`fly-deploy`](.github/workflows/fly-deploy.yml) preserves existing IP allocations and prevents public IP allocation when the app has no public IPs. Flycast provides native suspend/wakeup; direct `.internal` access requires running Machines.
 
-Run [`fly-network`](.github/workflows/fly-network.yml) with `operation: list` for organization peers, `vend` for an app-network config, or `revoke` to remove a named peer. `peer_name` defaults to the app name; use a unique name per device. Download the `wireguard-<peer name>` artifact and import its `.conf` file. Artifacts expire after one day; CI deletes temporary configs and logs only metadata. Filenames use the first 15 peer-name characters for Linux compatibility. To replace a config, vend one with a new `peer_name`, verify access, then revoke the old peer.
+Run [`Fly Private Networking`](.github/workflows/fly-private-networking.yml) with `List WireGuard peers`, `Vend WireGuard config`, or `Revoke WireGuard peer`. `peer_name` defaults to the app name; use a unique name per device. Download the `wireguard-<peer name>` artifact and import its `.conf` file. Artifacts expire after one day; CI deletes temporary configs and logs only metadata. Filenames use the first 15 peer-name characters for Linux compatibility. To replace a config, vend one with a new `peer_name`, verify access, then revoke the old peer.
 
-Existing apps can keep their Machine network and expose Flycast on `app-<app name>`. Run [`fly-network`](.github/workflows/fly-network.yml) with `create` if that network is missing. [`fly-network`](.github/workflows/fly-network.yml) with `vend` allocates a missing Flycast IP on that network and preserves other private addresses for backend connections. Direct `internal` mode requires the app and VPN clients on the same network.
+Existing apps can keep their Machine network and expose Flycast on `app-<app name>`. Use `Create private network` if that client network is missing, then run [`fly-release`](.github/workflows/fly-release.yml). Vending a WireGuard config does not change the app's IPs. Direct `internal` mode requires the app and VPN clients on the same network; Fly.io cannot change an existing app's Machine network.
+
+Private modes release public IPs. Public mode allocates shared IPv4 and public IPv6 when public IPs are absent. Switching away from Flycast releases its address on the app-specific client network; private addresses on other networks remain available for backend connections.
 
 ## Deploy Readiness
 
@@ -74,12 +76,19 @@ Service `checks` gate routing and updates after a Machine starts; `machine_check
 
 ## Workflows And Actions
 
-- [`fly-release`](.github/workflows/fly-release.yml): provision the app and volumes, call [`fly-deploy`](.github/workflows/fly-deploy.yml), then vend WireGuard. Run for initial setup or infrastructure changes.
-- [`fly-deploy`](.github/workflows/fly-deploy.yml): sync secrets, check networking, build, and deploy application code and config changes.
+- [`fly-release`](.github/workflows/fly-release.yml): provision the app, networking, and volumes, vend private access, then call [`fly-deploy`](.github/workflows/fly-deploy.yml). Run for initial setup or infrastructure changes.
+- [`fly-deploy`](.github/workflows/fly-deploy.yml): sync secrets, build, and deploy application code and config changes.
 - [`fly-set-secrets`](.github/workflows/fly-set-secrets.yml): secret mapping shared by releases and standalone dispatch.
 - [`fly-resize-volume`](.github/workflows/fly-resize-volume.yml): resize the selected Machine's volume within its current region.
-- [`fly-network`](.github/workflows/fly-network.yml): private networking and WireGuard peer management.
-- Optional, uncomment or dispatch when needed: [`fly-merge-compose`](.github/workflows/fly-merge-compose.yml), [`fly-scale-processes`](.github/actions/fly-scale-processes/action.yml), [`fly-cleanup-volumes`](.github/workflows/fly-cleanup-volumes.yml), [`fly-cleanup-machines`](.github/actions/fly-cleanup-machines/action.yml), [`fly-restore-volume-snapshot`](.github/workflows/fly-restore-volume-snapshot.yml), [`fly-migrate-region`](.github/workflows/fly-migrate-region.yml), [`gh-artifact-encrypt-decrypt`](.github/actions/gh-artifact-encrypt-decrypt/action.yml).
+- [`Fly Private Networking`](.github/workflows/fly-private-networking.yml): create a private network and manage WireGuard connections.
+- Optional, uncomment or dispatch when needed:
+    - [`fly-merge-compose`](.github/workflows/fly-merge-compose.yml)
+    - [`fly-scale-processes`](.github/actions/fly-scale-processes/action.yml)
+    - [`fly-cleanup-volumes`](.github/workflows/fly-cleanup-volumes.yml)
+    - [`fly-cleanup-machines`](.github/actions/fly-cleanup-machines/action.yml)
+    - [`fly-restore-volume-snapshot`](.github/workflows/fly-restore-volume-snapshot.yml)
+    - [`fly-migrate-region`](.github/workflows/fly-migrate-region.yml)
+    - [`gh-artifact-encrypt-decrypt`](.github/actions/gh-artifact-encrypt-decrypt/action.yml)
 
 Prefer uncommenting existing optional steps over adding duplicate jobs.
 
