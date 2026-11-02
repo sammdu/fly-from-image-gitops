@@ -3,29 +3,32 @@ name: Fly Network
 on:
     workflow_call:
         inputs:
+            FLY_ORG:
+                description: Fly organization
+                type: string
+                default: ""
             operation:
-                description: Verify or provision networking, create a network, or manage peers
+                description: Operation
                 type: string
                 default: verify
             peer_name:
-                description: WireGuard peer name; blank uses the app name
+                description: Peer name (or app name)
                 type: string
                 default: ""
     workflow_dispatch:
         inputs:
             operation:
-                description: Verify access, list peers, create a network, vend a config, or revoke a peer
+                description: Operation
                 type: choice
                 options: [verify, list, create, vend, revoke]
                 required: true
                 default: list
             peer_name:
-                description: WireGuard peer name; blank uses the app name
+                description: Peer name (or app name)
                 required: false
                 default: ""
 
 env:
-    FLY_ORG: personal
     FLY_ACCESS_MODE: ""
 
 jobs:
@@ -37,6 +40,7 @@ jobs:
             - uses: ./.github/actions/fly-setup
               with:
                   fly-api-token: ${{ secrets.FLY_API_TOKEN }}
+                  fly-org: ${{ inputs.FLY_ORG }}
             - if: inputs.operation == 'provision'
               uses: ./.github/actions/fly-provision
             - if: (inputs.operation == 'verify' || inputs.operation == 'provision') && env.FLY_ACCESS_MODE != ''

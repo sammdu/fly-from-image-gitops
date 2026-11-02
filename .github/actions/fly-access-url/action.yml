@@ -10,6 +10,8 @@ runs:
               ips=$(flyctl ips list --json)
               has_private=$(jq -r 'any(.[]; ((.Type // .type // "") | ascii_downcase) | contains("private"))' <<< "$ips")
               has_public=$(jq -r 'any(.[]; ((.Type // .type // "") | ascii_downcase | contains("private") | not))' <<< "$ips")
+
+              # Include proxy URLs for the app's allocated public or private ingress.
               summary=("### Fly.io app URLs" "")
               [ "$has_public" = "true" ] && summary+=("- https://${FLY_APP}.fly.dev")
               [ "$has_private" = "true" ] && summary+=("- http://${FLY_APP}.flycast")

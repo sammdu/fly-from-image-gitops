@@ -31,7 +31,7 @@ runs:
           run: |
               app_exists=$(flyctl apps list --json | jq -r --arg name "$FLY_APP" '.[] | select(.Name == $name) | .Name')
               if [ -z "$app_exists" ]; then
-                  echo "App '$FLY_APP' not found. Run fly-bootstrap first."
+                  echo "App '$FLY_APP' not found. Run fly-release first."
                   exit 1
               fi
         - name: Start deployed Machines
@@ -46,6 +46,8 @@ runs:
               override_image="${{ inputs.image }}"
               configured_image=$(jq -r '.build.image // empty' fly.json)
               deploy_args=(--config fly.json --ha="${{ inputs.enable-ha-with-no-volumes }}" --yes --debug --verbose)
+
+              # Apply rollout overrides before choosing the deployment image.
               if [ "${{ inputs.skip-release-command }}" = "true" ]; then
                   deploy_args+=(--skip-release-command)
               fi
@@ -53,6 +55,7 @@ runs:
                   deploy_args+=(--process-groups "${{ inputs.process-groups }}")
               fi
 
+              # Choose the image from the input, then fly.json, then local app configuration.
               if [ -n "$override_image" ]; then
                   flyctl deploy "${deploy_args[@]}" --image "$override_image"
               elif [ -n "$configured_image" ]; then

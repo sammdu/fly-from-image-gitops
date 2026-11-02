@@ -1,0 +1,31 @@
+name: Fly Release
+
+on:
+    workflow_dispatch:
+        inputs:
+            release_dependency_process_groups:
+                description: Release dependency groups
+                default: ""
+
+jobs:
+    provision:
+        uses: ./.github/workflows/fly-network.yml
+        with:
+            operation: provision
+            FLY_ORG: personal
+        secrets: inherit
+
+    deploy:
+        needs: provision
+        uses: ./.github/workflows/fly-deploy.yml
+        with:
+            initial_deploy: true
+            release_dependency_process_groups: ${{ inputs.release_dependency_process_groups }}
+        secrets: inherit
+
+    network:
+        needs: deploy
+        uses: ./.github/workflows/fly-network.yml
+        with:
+            operation: vend
+        secrets: inherit

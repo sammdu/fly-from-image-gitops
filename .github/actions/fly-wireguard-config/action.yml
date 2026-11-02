@@ -27,6 +27,8 @@ runs:
           run: |
               peer="$WIREGUARD_PEER_NAME"
               [ -n "$peer" ] || peer="$FLY_APP"
+
+              # Handle listing and revocation before preparing a new config.
               case "$WIREGUARD_OPERATION" in
                   list) flyctl wireguard list "$FLY_ORG"; exit ;;
                   revoke) flyctl wireguard remove "$FLY_ORG" "$peer"; exit ;;
@@ -44,6 +46,8 @@ runs:
                   echo "Peer names must contain only letters, numbers, and dashes."
                   exit 1
               fi
+
+              # Export the config path for artifact upload and cleanup.
               config_file="$RUNNER_TEMP/${peer:0:15}.conf"
               echo "config-file=$config_file" >> "$GITHUB_OUTPUT"
               echo "peer-name=$peer" >> "$GITHUB_OUTPUT"

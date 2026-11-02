@@ -41,11 +41,15 @@ runs:
           run: |
               mkdir -p "$DIR"
               files=()
+
+              # Download upstream sources in merge order.
               for url in $URLS; do
                   dest="$DIR/$(basename "$url")"
                   wget -qO "$dest" "$url"
                   files+=(-f "$dest")
               done
+
+              # Apply local overrides after upstream defaults.
               for f in $LOCAL; do files+=(-f "$f"); done
 
               if [ ${#files[@]} -eq 0 ]; then

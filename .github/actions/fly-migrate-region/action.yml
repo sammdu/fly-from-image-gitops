@@ -16,7 +16,6 @@ runs:
               CONFIRM: ${{ inputs.confirm }}
           run: |
               region="$FLY_PRIMARY_REGION"
-              list_volumes() { flyctl volumes list --json; }
 
               machines=$(flyctl machine list --json | jq -r --arg region "$region" '.[] | select(.region != $region) | .id')
               if [ -z "$machines" ]; then
@@ -33,21 +32,27 @@ runs:
 
               for machine in $machines; do
                   echo "Migrating $machine -> $region"
-                  attach_args=()
-                  old_volumes=()
-                  while IFS=$'\t' read -r vol_id vol_name; do
-                      destination=$(jq -r --arg source "$vol_name" '.mounts[]? | select(.source == $source).destination' fly.json)
-                      new_vol_id=$(flyctl volumes fork "$vol_id" --region "$region" --json | jq -r .id)
-                      until [ "$(list_volumes | jq -r --arg id "$new_vol_id" '.[] | select(.id == $id).state')" = created ]; do
+
+                  # Stop writes before copying data into the destination region.
+                  flyctl machine cordon "$machine"
+                  flyctl machine stop "$machine" --signal SIGTERM --wait-timeout 1m
+
+                  # Fork any attached volume and wait for the regional copy to be available.
+                  vol_id=$(flyctl volumes list --json | jq -r --arg machine "$machine" '.[] | select(.attached_machine_id == $machine) | .id')
+                  new_vol_id=""
+                  if [ -n "$vol_id" ]; then
+                      new_vol_id=$(flyctl volumes fork "$vol_id" --region "$region" --json | jq -er .id)
+
+                      until [ "$(flyctl volumes list --json | jq -r --arg id "$new_vol_id" '.[] | select(.id == $id).state')" = created ]; do
                           sleep 10
                       done
-                      attach_args+=(--attach-volume "$new_vol_id:$destination")
-                      old_volumes+=("$vol_id")
-                  done < <(list_volumes | jq -r --arg machine "$machine" --arg region "$region" '.[] | select(.attached_machine_id == $machine and .region != $region) | "\(.id)\t\(.name)"')
-
-                  flyctl machine clone "$machine" --region "$region" "${attach_args[@]}" --verbose
-                  flyctl machine destroy "$machine" --force --verbose
-                  if [ ${#old_volumes[@]} -gt 0 ]; then
-                      flyctl volumes destroy "${old_volumes[@]}" --yes --verbose
                   fi
+
+                  # Attach the regional copy to a replacement before deleting the originals.
+                  args=("$machine" --region "$region")
+                  [ -z "$new_vol_id" ] || args+=(--attach-volume "$new_vol_id")
+                  flyctl machine clone "${args[@]}"
+
+                  flyctl machine destroy "$machine" --force
+                  [ -z "$vol_id" ] || flyctl volumes destroy "$vol_id" --yes --verbose
               done

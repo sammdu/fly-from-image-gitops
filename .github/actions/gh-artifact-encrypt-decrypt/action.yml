@@ -29,7 +29,10 @@ runs:
                   echo "crypt-artifact: key is required"
                   exit 1
               fi
+
               gpg_args=(--batch --yes --pinentry-mode loopback --passphrase "$KEY")
+
+              # Encrypt or decrypt the artifact with the supplied key.
               if [ "$DIRECTION" = "encrypt" ]; then
                   gpg "${gpg_args[@]}" --symmetric --cipher-algo AES256 -o "$OUTPUT" "$INPUT"
               elif [ "$DIRECTION" = "decrypt" ]; then

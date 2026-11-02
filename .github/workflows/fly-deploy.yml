@@ -1,9 +1,22 @@
 name: Deploy App
+
 on:
+    workflow_call:
+        inputs:
+            initial_deploy:
+                type: boolean
+                default: false
+            release_dependency_process_groups:
+                type: string
+                default: ""
     workflow_dispatch:
-    # Uncomment to deploy on push to main.
+    # To deploy on pushes, uncomment push and set branches to your deployment branch.
     # push:
     #     branches: [main]
+
+concurrency:
+    group: fly-${{ github.repository }}
+    cancel-in-progress: false
 
 jobs:
     network:
@@ -13,24 +26,23 @@ jobs:
     set-secrets:
         uses: ./.github/workflows/fly-set-secrets.yml
         with:
-            stage: true
+            stage: ${{ !inputs.initial_deploy }}
         secrets: inherit
 
-    # Compose: enable this job, add it to deploy.needs, and enable decryption below.
+    # For Compose merging, uncomment this job, add compose to deploy.needs, and enable the download/decryption steps below.
     # compose:
     #     uses: ./.github/workflows/fly-merge-compose.yml
     #     secrets: inherit
 
     deploy:
-        needs: [set-secrets, network]
+        needs: [network, set-secrets]
         runs-on: ubuntu-latest
-
         steps:
             - uses: actions/checkout@v6
             - uses: ./.github/actions/fly-setup
               with:
                   fly-api-token: ${{ secrets.FLY_API_TOKEN }}
-            # Compose: download and decrypt the rendered file.
+            # For merged Compose, uncomment both steps after enabling the compose job to fetch and decrypt compose.yaml.
             # - uses: actions/download-artifact@v8
             #   with:
             #       name: compose
@@ -42,21 +54,29 @@ jobs:
             #       output: compose.yaml
             - id: build-image
               uses: ./.github/actions/fly-build-image
+            - if: inputs.release_dependency_process_groups != ''
+              uses: ./.github/actions/fly-deploy
+              with:
+                  image: ${{ steps.build-image.outputs.image }}
+                  process-groups: ${{ inputs.release_dependency_process_groups }}
+                  skip-release-command: "true"
+                  start-process-groups: ${{ inputs.release_dependency_process_groups }}
             - uses: ./.github/actions/fly-deploy
               with:
                   image: ${{ steps.build-image.outputs.image }}
             - uses: ./.github/actions/fly-access-url
-            # Optional: reconcile process group Machine counts after deploy.
+
+            # To set Machine counts, uncomment this step and replace counts with space-separated process=count targets.
             # - uses: ./.github/actions/fly-scale-processes
             #   with:
             #       counts: web=1
-            # Optional: for apps using fly.json experimental.machine_config.
+
+            # For single-Machine apps using experimental.machine_config, uncomment to remove extra Machines; confirm enables deletion.
             # - uses: ./.github/actions/fly-cleanup-machines
             #   with:
             #       confirm: "true"
-            # Optional: delete unattached volumes; orphaned: "true" also snapshots and
-            # removes attached volumes no longer in fly.json mounts.
+
+            # To remove unattached or stuck volumes after deploy, uncomment this step; confirm enables deletion.
             # - uses: ./.github/actions/fly-cleanup-volumes
             #   with:
             #       confirm: "true"
-            #       orphaned: "false"

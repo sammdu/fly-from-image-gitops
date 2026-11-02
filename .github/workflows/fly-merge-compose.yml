@@ -13,10 +13,11 @@ jobs:
               with:
                   fly-api-token: ${{ secrets.FLY_API_TOKEN }}
             - uses: ./.github/actions/fly-compose
-              # Pass interpolation secrets through env.
+              # If Compose needs secret interpolation, uncomment env and map each variable to its GitHub secret.
               # env:
               #     SECRET_VAR: ${{ secrets.SECRET_VAR }}
               with:
+                  # To merge upstream Compose before local overrides, uncomment urls and replace the example URL.
                   # urls: https://example.com/compose.yaml
                   local: compose.fly.yaml
                   env-file: compose.fly.env

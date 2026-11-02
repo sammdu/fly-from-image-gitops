@@ -2,48 +2,88 @@
 
 Use this guidance when adapting this template for a specific application.
 
+The template's goal is 100% GitOps through GitHub Actions, from initial Fly.io app setup to further deployments, operation, and maintenance.
+
+Keep items brief. Split independent ideas into bullets and related aspects into sub-bullets.
+
 ## Generalize Deliberately
 
-- Keep reusable deployment mechanics in actions and workflows; keep application behavior and app-specific topology in app config, entrypoints, and documentation.
+- Aim for reusable deployment mechanics without adopting overly specific setups from other apps.
+    - Use other Fly.io deployment setups as references; avoid wholesale copying that imports unrelated topology.
+    - Avoid adding non-general behaviors & patterns specific to one deployment into shared mechanics; it makes other deployments inherit app assumptions.
+    - Consider app config, entrypoints, or docs for app-specific behavior, while sharing the deployment mechanics.
+- Help users act on their goals through the operator interface.
+    - Avoid workflows, inputs, or processes without an actionable purpose; they add ceremony without helping the user.
+    - Consider independently useful workflows so users can pursue a goal without unrelated steps.
 - Before porting a fix from another deployment, decide whether it addresses a template concern or only that app's topology.
 - Abstract cross-repo lessons into failure modes before porting a command, config shape, or workaround.
-- Use sibling deployments as references, not sources to copy wholesale.
 - Prefer small changes that remove a class of failures over broad synchronization from another fork.
-- When the template already encodes a deployment mechanic, keep this file focused on reasoning and failure modes rather than restating the implementation.
+- Keep AGENTS.md focused on reusable reasoning and failure modes.
+    - Avoid workflow- and action-specific documentation; changing implementation details make the guidance stale and less portable.
 - Avoid carrying over branch-specific checks, scripts, or workarounds unless the same failure mode exists in the target app.
-- Favor inheriting or inferring from `fly.json`, workflow `env`, and action outputs over manually repeating app names, ports, image names, regions, access mode, or process lists.
-- Keep actions independent: deploy logic belongs in `fly-deploy`, private network policy in `fly-private-network`, Compose preparation in `fly-compose`, and secret mapping in `fly-set-secrets`.
-- Keep image routing, staged secrets, checkout/setup ordering, private networking, Compose preparation, and cleanup as reusable mechanics instead of copied workflow blocks.
+- Avoid duplicating deployment facts or mechanics; consider existing sources and reusable interfaces.
+    - Consider native config, platform state, or action outputs for deployment facts.
+    - Consider the owning workflow or app config for user settings; users should not need to edit action internals.
+    - Keep creation policy separate from observed state; defaults may not describe existing resources.
+    - Share settings through native GitHub Actions inputs, outputs, env, and contexts; verify their scope.
+    - Aim for cohesive Fly.io actions with declared inputs and outputs.
+    - Avoid scraping another workflow's YAML or calling another action's private scripts.
+    - Consider shared image routing, staged secrets, checkout/setup ordering, networking, Compose, and cleanup.
+- Keep non-secret architectural settings explicit and checked in.
+    - For example, `FLY_ORG` and `FLY_ACCESS_MODE` describe deployment design; repository variables or secrets would hide their values.
 
 ## Start From Simplicity
 
 - Approach planning and implementation with simplicity and minimalism as first principles.
 - Prefer the least custom solution that satisfies the deployment goal and preserves operator clarity.
-- Use what the platform, template, upstream image, framework, and existing project conventions already provide before adding new logic.
-- Treat every new script, check, service, workflow step, override, or abstraction as a cost that must be justified by a concrete failure mode or requirement.
+- Avoid rebuilding behavior provided by the platform, template, upstream image, framework, or project conventions.
+    - Consider flyctl's lifecycle, state, wait, and validation features to avoid duplicate orchestration.
+    - Avoid unnecessary state records, repeated cross-checks, and error handling already supplied by the platform.
+- Treat every addition as a cost that needs a concrete requirement or failure mode.
+    - This includes scripts, checks, services, workflow steps, overrides, abstractions, input parameters, output fields, and artifacts.
 - For nontrivial fixes, compare a few simple options, test uncertain assumptions when practical, then choose the one with fewer moving parts and fewer hidden dependencies.
 - Before adding custom logic, ask whether the same outcome can be reached by removing, simplifying, reusing, or slightly adjusting existing behavior.
-- Keep app-specific behavior close to the app, and avoid duplicating responsibilities already handled by reusable template mechanics.
-- Template updates should shrink future app setup; add a new action or workflow step only when it removes repeated setup or isolates a real Fly failure mode.
+- Avoid duplicating template mechanics in app-specific code; keep app behavior near the app so ownership stays clear.
+- Aim for workflow glue that operators can read and maintain.
+    - Avoid tiny helper files or Bash functions that add indirection; consider inlining short YAML/Bash steps.
+    - Only consider introducing a script when it makes substantial complexity clearer than an inline block.
+- Avoid growing the template without reducing repeated app setup or addressing a demonstrated platform failure.
 - When revising an existing change, prefer reverting, amending, or shrinking it over adding compatibility layers or follow-up cleanup.
-- After repeated failures, stop and reclassify the failure layer before editing again.
+- Avoid accumulating conditions, branches, and states during iterative troubleshooting or implementation.
+    - Revisit the failure layer and core assumptions before adding another workaround.
+    - Consider broader architectural solutions that address the issue generally and simplify the logic.
 - Avoid speculative rewrites, broad render transforms, custom test harnesses, helper dependencies, and one-off scripts unless a concrete platform gap requires them.
 
 ## Reason About Fly Semantics
 
 - Treat health checks as deploy and proxy readiness contracts, not broad dependency tests.
 - Service HTTP/TCP checks gate routing and updates after a Machine starts; they do not start stopped Machines.
-- Machine checks use an ephemeral test Machine to probe a started deployment target through `FLY_TEST_MACHINE_IP`; they run only for rolling and canary deploys and do not start stopped targets.
-- `release_command` is for one-off setup or migrations without mounted volumes. It replaces `CMD`, preserves `ENTRYPOINT`, and must remain compatible with the currently deployed release.
+- Machine checks use an ephemeral test Machine.
+    - They probe a started deployment target through `FLY_TEST_MACHINE_IP`.
+    - They run only for rolling and canary deploys and do not start stopped targets.
+- Use `release_command` for one-off setup or migrations without mounted volumes.
+    - It replaces `CMD` and preserves `ENTRYPOINT`.
+    - It must remain compatible with the currently deployed release.
 - Distinguish deploy success, proxy routing, public listener availability, and internal dependency readiness before changing checks or startup behavior.
-- Avoid checks that wake or block on databases, queues, caches, or external APIs unless that is the intended readiness contract; distinguish "the app can answer traffic" from "every downstream dependency is ready."
+- Keep readiness checks scoped to the intended serving contract.
+    - Avoid waking or blocking on databases, queues, caches, or external APIs unless that is the intended contract.
+    - Distinguish "the app can answer traffic" from "every downstream dependency is ready."
 - For scale-to-zero apps, make cost, wakeup behavior, and reliability tradeoffs explicit before keeping any process warm.
-- Distinguish cold starts, `connection refused`, app-level `502`, wrong bind addresses, private-network routing, and app boot failures before changing ports, checks, or proxy settings.
+    - Verify the first real cold-start request against the app's readiness requirement.
+- Before changing ports, checks, or proxy settings, distinguish the failure:
+    - Cold starts, `connection refused`, and app-level `502`.
+    - Wrong bind addresses, private-network routing, and app boot failures.
 - Persistent Fly Volume state can outlive config changes; consider mounted data, generated files, sockets, and pid files before changing startup logic.
-- Map upstream image, Dockerfile, Compose, and script assumptions onto Fly limits before editing: build/runtime boundaries, global runtime secrets, ignored Compose volumes, release commands without volumes, proxy target selection, and app-injected `FLY_*` variables.
+- Map upstream image, Dockerfile, Compose, and script assumptions onto Fly.io limits before editing.
+    - Build/runtime boundaries and global runtime secrets.
+    - Ignored Compose volumes and release commands without volumes.
+    - Proxy target selection and app-injected `FLY_*` variables.
 - For private services that need wake-on-request behavior, verify the traffic path before changing networking or readiness logic.
 - Use pre-release or deploy-blocking hooks only when failing before rollout is clearly better than letting the app boot and report health.
-- `kill_signal` (Fly default `SIGINT`) is sent to each container on stop and deploy; prefer `SIGTERM` and verify the main process shuts down cleanly on it (some daemons ignore `SIGINT`, e.g. MariaDB/MySQL), or it is `SIGKILL`ed at `kill_timeout`.
+- Find the application's graceful-shutdown signal handler and configure `kill_signal` accordingly.
+    - Do not assume Fly.io's default `SIGINT` is appropriate for the app.
+    - The configured signal is sent to each container on stop and deploy.
+    - Verify the main process shuts down cleanly before `kill_timeout`; otherwise it receives `SIGKILL`.
 
 ## Keep Startup Simple
 
@@ -52,45 +92,69 @@ Use this guidance when adapting this template for a specific application.
 - Delay background workers or secondary processes until their own dependencies are ready.
 - One-shot setup services must be idempotent and fast when the target state already exists.
 - When an app needs file-backed secrets or initial files on a mounted path, prefer an idempotent one-shot service that writes only the missing target state.
-- Prefer shallow startup sequencing over shell frameworks, strict-mode rewrites, and broad cleanup machinery.
+- Avoid shell frameworks, strict-mode rewrites, or broad cleanup without a concrete need; consider shallow startup sequencing to keep execution inspectable.
 - Polling loops should notice when the child process they depend on has exited, and should emit enough context to debug timing failures.
 - Account for VM-level state that can survive process or container restarts, including stale sockets, mounted paths, pid files, and sysctl changes.
-- Be skeptical of command strings that cross config, shell, remote exec, and container boundaries; simplify them first, and only move unavoidable complexity into inspectable scripts.
+- Aim to make commands understandable across config, shell, remote exec, and container boundaries.
+    - Avoid nested shells that obscure expansion; consider separate installation, configuration, or startup calls when clearer.
 - In multi-process apps, verify services, checks, volumes, VMs, and mounts are scoped to the intended process group.
 
 ## Manage Render Boundaries
 
-- Treat GitHub expressions, YAML, JSON, Compose interpolation, Dockerfile parsing, shell expansion, and app config as separate interpreters; decide which layer should consume each variable, quote, escape, newline, and path, then verify the rendered artifact.
+- Treat GitHub expressions, YAML, JSON, Compose interpolation, Dockerfile parsing, shell expansion, and app config as separate interpreters.
+    - Decide which layer consumes each variable, quote, escape, newline, and path.
+    - Verify the rendered artifact.
 - Prefer structured fields, argv arrays, env maps, config files, `jq`, and native validators over strings that must survive several interpreters.
 - Keep secrets out of rendered config and logs; pass them through runtime secret or file mechanisms until the final consumer.
 
 ## Compose Guidance
 
-- Use Fly native Compose when services belong on one Machine and a Compose file is the clearest source of container definitions; treat it as a translation path, not Docker Compose running in the Machine.
-- Keep Fly-specific persistence in `fly.json`; Compose volumes do not replace Fly Volumes, and a Fly Volume mounted over an image path hides the image's original files at that path.
+- Consider Fly native Compose when services belong on one Machine and Compose is the clearest source of container definitions.
+    - Treat it as a translation path, not Docker Compose running in the Machine.
+- Keep Fly-specific persistence in `fly.json`; Compose volumes do not replace Fly Volumes.
+    - A Fly Volume mounted over an image path hides the image's original files at that path.
 - Check rendered Compose output for flyctl-supported shapes, especially `volumes`, `ports`, `depends_on`, `healthcheck`, `secrets`, and `build`.
-- Docker Compose interpolation, `$$` escaping, `.env`, `--env-file`, `env_file`, and `environment` operate at different layers; verify which layer consumes and exports each value before rewriting templates.
+- Distinguish Docker Compose interpolation, `$$` escaping, `.env`, `--env-file`, `env_file`, and `environment`.
+    - Verify which layer consumes and exports each value before rewriting templates.
 - Fly secrets are runtime Machine secrets; they are not automatically available to Compose rendering unless the workflow explicitly passes them into that step.
-- Use `compose.fly.env` or `fly-compose` `env-file` only for non-secret interpolation defaults. Keep runtime secrets in `fly-set-secrets` unless a concrete app setup step must materialize a file inside a volume.
-- For all-prebuilt Compose services, prefer pinning `fly.json` `build.image` to the primary image over adding a dummy Dockerfile or image handoff step.
-- Compare pinned upstream Compose files at the pinned ref first, and preserve upstream service commands and dependency graphs unless the Fly translation path demonstrably requires an override.
+- Keep Compose interpolation defaults non-secret.
+- Pass runtime secrets through the reusable secret-setting mechanism.
+    - Materialize a secret file inside a volume only when a concrete app setup step requires it.
+- Avoid dummy Dockerfiles or image handoffs for prebuilt Compose services; consider the primary image in `fly.json` `build.image` to keep selection declarative.
+- Compare upstream Compose files at the pinned ref first.
+    - Preserve upstream service commands and dependency graphs unless the Fly translation path demonstrably requires an override.
 - Keep app-specific Compose preprocessing in the app repo; avoid template-level generators unless they remove repeated setup across apps.
 
 ## Preserve Operator Clarity
 
 - Avoid duplicate deployment notices and repeated status messages.
-- Avoid splitting one operational responsibility across several hidden places.
-- Remove temporary diagnostics before finalizing, or document why they must remain.
+- Do not require, download, install, or configure flyctl or other vendor tools on users' computers.
+    - Run required vendor tooling and handle its setup in GitHub Actions.
+- Keep operator inputs clear and minimal.
+    - Avoid ambiguous free-text options and hidden defaults; consider native choices to make supported operations visible.
+    - Avoid redundant switches; consider deriving behavior from existing inputs to reduce operator decisions.
+- Use concise prose and exact, hyperlinked workflow/action names so operators can find the relevant interface.
+    - Name the responsible component: flyctl, the Machines API, Fly Proxy, or Fly.io.
+- Preserve established cleanup and confirmation behavior unless explicitly changed or a verified failure requires it.
+- Avoid resource churn during routine deploys; keep credential rotation and auxiliary-network replacement as explicit operator goals.
+- Avoid spreading one operational responsibility across hidden locations; consider a clear owner to keep behavior discoverable.
+- Avoid retaining temporary diagnostics without purpose; remove them or document the uncertainty they still resolve.
 - Diagnostic logs should answer a specific uncertainty, and rendered config logging must avoid exposing secrets or secret-derived values.
-- Document any necessary manual post-deploy step when workflow automation would add fragility.
-- Document manual reset steps for persistent state when automating the reset would be fragile.
+- Avoid fragile post-deploy automation; consider documenting a manual step when it makes the operation more reliable.
+- Avoid automating persistent-state resets without a reliable flow; consider documenting the manual reset procedure.
 
 ## Review And Verify
 
-- Inspect current repo state before editing; do not assume a clean template or a clean fork.
+- Avoid assuming a clean template or fork; inspect current repo state to preserve intentional changes.
+- Preserve established guidance unless repeated use contradicts it or a newer explicit user decision supersedes it.
+- Honor requested design and UX review before implementation, then complete the authorized scope.
 - When asked to simplify, remove moving parts first: extra scripts, duplicated checks, repeated notices, and unnecessary preflight work.
-- For broken deployments, classify the failure layer, diff against the last known-good commit, inspect official docs or source, make one hypothesis change, then verify with logs or CI-rendered config.
+- Aim to identify the failing layer before changing deployment behavior.
+    - Avoid stacking speculative fixes; they obscure which assumption failed.
+    - Consider the last known-good diff, official docs, and logs to choose one hypothesis change, then verify it.
 - Inspect both source and rendered output when generated config is involved.
+    - Verify the actual runtime consumer and environment scope.
+    - Explicit exports in a temporary diagnostic or release Machine do not prove runtime inheritance.
 - Verify tool behavior, runtime versions, and provider assumptions with actual source, docs, or command output.
 - Recheck assumptions around registry access, CI runtimes, network behavior, DNS behavior, and external provider configuration.
 - If local `docker`, `flyctl`, or network access is unavailable, rely explicitly on CI artifacts and state what remains unverified.
@@ -99,17 +163,21 @@ Use this guidance when adapting this template for a specific application.
 
 ## Official Docs And Sources
 
-- Proactively read official Fly.io docs for deployment, Machines, networking, health checks, secrets, and workflow questions. Use them to challenge existing assumptions before planning or editing.
+- Proactively read official Fly.io docs for deployment, Machines, networking, health checks, secrets, and workflows.
+    - Use them to challenge existing assumptions before planning or editing.
 - Prefer direct Markdown at `https://docs.fly.io/<path>.md` for Fly.io documentation.
-- Pair Fly docs with flyctl source when behavior depends on current parser or translator support. Shallow-clone source repositories into a temporary directory and navigate them with `ast-grep`.
-- Treat Docker Compose, GitHub Actions, upstream image, and upstream app documentation as first-class sources when interpolation, workflows, image behavior, or app setup is involved.
+- Pair Fly.io docs with flyctl source when behavior depends on current parser or translator support.
+    - Shallow-clone source repositories into a temporary directory and navigate them with `ast-grep`.
+- Treat Docker Compose, GitHub Actions, upstream image, and upstream app docs as first-class sources for interpolation, workflows, image behavior, and setup.
 - When a provided URL matches the patterns below, transform it proactively and read the Markdown before reasoning from the rendered page.
 - Fly.io docs URL mapping patterns:
     - Map `https://fly.io/docs/<path>/` to `https://docs.fly.io/<path>.md`.
-    - If direct Markdown is unavailable, use the rendered page. Shallow-clone `https://github.com/superfly/docs` to inspect its source; the source filename may differ from the public path.
+    - If direct Markdown is unavailable:
+        - Use the rendered page.
+        - Shallow-clone `https://github.com/superfly/docs` to inspect source; filenames may differ from public paths.
 - GitHub docs URL mapping patterns:
-  - `https://github.com/<owner>/<repo>/blob/<branch>/<path>` -> `https://raw.githubusercontent.com/<owner>/<repo>/refs/heads/<branch>/<path>`
-  - `https://github.com/<owner>/<repo>/blob/<tag>/<path>` -> `https://raw.githubusercontent.com/<owner>/<repo>/refs/tags/<tag>/<path>`
+    - `https://github.com/<owner>/<repo>/blob/<branch>/<path>` -> `https://raw.githubusercontent.com/<owner>/<repo>/refs/heads/<branch>/<path>`
+    - `https://github.com/<owner>/<repo>/blob/<tag>/<path>` -> `https://raw.githubusercontent.com/<owner>/<repo>/refs/tags/<tag>/<path>`
 
 ### Health Checks & Deployments
 

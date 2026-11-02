@@ -4,21 +4,25 @@ on:
     workflow_dispatch:
         inputs:
             snapshot_id:
-                description: Snapshot ID (vs_...) to restore from
+                description: Snapshot ID (vs_...)
                 required: true
             replace:
-                description: Replace in place (clone the Machine onto the restored volume, then destroy the old Machine); ignores volume_name
+                description: Replace in place
                 type: boolean
                 default: false
             volume_name:
-                description: Volume name; blank uses the first fly.json mount
+                description: Volume name (or original)
                 default: ""
             region:
-                description: Region; blank reuses the existing volume's
+                description: Region (or original)
                 default: ""
             size_gb:
-                description: Size in GB; blank reuses the existing volume's
+                description: Size in GB (or original)
                 default: ""
+
+concurrency:
+    group: fly-${{ github.repository }}
+    cancel-in-progress: false
 
 jobs:
     restore:

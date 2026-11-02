@@ -4,13 +4,18 @@ on:
     workflow_dispatch:
         inputs:
             confirm:
-                description: Set to true to fork volumes, clone Machines into primary_region, and destroy the originals
+                description: Apply migration to primary region
                 type: boolean
                 default: false
+
+concurrency:
+    group: fly-${{ github.repository }}
+    cancel-in-progress: false
 
 jobs:
     migrate:
         runs-on: ubuntu-latest
+        timeout-minutes: 360
 
         steps:
             - uses: actions/checkout@v6
