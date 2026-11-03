@@ -6,9 +6,9 @@ For LLM agents adapting this template, read [AGENTS.md](AGENTS.md) first.
 
 ## Quick Start
 
-1. Edit `fly.json`: set `app`, `primary_region`, deployment type, and `http_service.internal_port`.
+1. Edit `fly.json`: set `app`, `primary_region`, deployment type, and networking services and ports.
 2. Add the GitHub Actions secret `FLY_API_TOKEN`.
-3. Set `FLY_ORG` and `FLY_ACCESS_MODE` in [`fly-release`](.github/workflows/fly-release.yml). The organization defaults to `personal`; access mode is `internal`, `flycast`, or empty for public apps.
+3. Set `FLY_ORG` and `FLY_ACCESS_MODE` in [`fly-release`](.github/workflows/fly-release.yml). The organization defaults to `personal`; access mode defaults to `public`. Use `internal`, `flycast`, or `public`; leave it unset to preserve existing access.
 4. Map app secrets in [`fly-set-secrets`](.github/workflows/fly-set-secrets.yml).
 5. Run [`fly-release`](.github/workflows/fly-release.yml). Pass process groups needed by `release_command` in `release_dependency_process_groups`.
 6. Run [`fly-deploy`](.github/workflows/fly-deploy.yml), or uncomment its `push` trigger.
@@ -64,11 +64,11 @@ Shrinking requires downtime and changes the Machine ID. If copying fails, the or
 
 [`fly-release`](.github/workflows/fly-release.yml) creates private apps on `app-<app name>` and issues a WireGuard config. Rerun it after changing `FLY_ACCESS_MODE` to apply access changes. [`fly-deploy`](.github/workflows/fly-deploy.yml) preserves existing IP allocations and prevents public IP allocation when the app has no public IPs. Flycast provides native suspend/wakeup; direct `.internal` access requires running Machines.
 
-Run [`Fly Private Networking`](.github/workflows/fly-private-networking.yml) with `List WireGuard peers`, `Vend WireGuard config`, or `Revoke WireGuard peer`. `peer_name` defaults to the app name; use a unique name per device. Download the `wireguard-<peer name>` artifact and import its `.conf` file. Artifacts expire after one day; CI deletes temporary configs and logs only metadata. Filenames use the first 15 peer-name characters for Linux compatibility. To replace a config, vend one with a new `peer_name`, verify access, then revoke the old peer.
+Run [`Fly Private Networking`](.github/workflows/fly-private-networking.yml) with `List WireGuard peers`, `Vend WireGuard config`, or `Revoke WireGuard peer`. Vending with `peer_name` unset creates a new peer with an app prefix and random suffix, such as `samm-erpne-ce57`. Set `peer_name` for a fixed name or to revoke an exact peer. Download the `wireguard-<peer name>` artifact and import its `.conf` file. Artifacts expire after one day; CI deletes temporary configs and logs only metadata. Filenames use the first 15 peer-name characters for Linux compatibility. To replace a config, vend another, verify access, then revoke the old peer.
 
-Existing apps can keep their Machine network and expose Flycast on `app-<app name>`. Use `Create private network` if that client network is missing, then run [`fly-release`](.github/workflows/fly-release.yml). Vending a WireGuard config does not change the app's IPs. Direct `internal` mode requires the app and VPN clients on the same network; Fly.io cannot change an existing app's Machine network.
+`View app networks and IPs` is the default and shows networks, IP bindings, Machine private IPs, and access URLs. `Configure app network` and vending share the same network preparation. For existing Flycast apps, the workflow creates the client network and allocates its Flycast address if missing. Other apps use their existing Machine network. Setting `internal` during release requires the app on its app-specific network; Fly.io cannot change an existing app's Machine network.
 
-Private modes release public IPs. Public mode allocates shared IPv4 and public IPv6 when public IPs are absent. Switching away from Flycast releases its address on the app-specific client network; private addresses on other networks remain available for backend connections.
+Private modes release public IPs. Public mode adds missing shared IPv4 and public IPv6 independently; existing public addresses are reused. After IP configuration, use the dashboard link to manage or delete IPs. Switching away from Flycast releases its address on the app-specific client network; private addresses on other networks remain available for backend connections.
 
 ## Deploy Readiness
 
@@ -80,7 +80,7 @@ Service `checks` gate routing and updates after a Machine starts; `machine_check
 - [`fly-deploy`](.github/workflows/fly-deploy.yml): sync secrets, build, and deploy application code and config changes.
 - [`fly-set-secrets`](.github/workflows/fly-set-secrets.yml): secret mapping shared by releases and standalone dispatch.
 - [`fly-resize-volume`](.github/workflows/fly-resize-volume.yml): resize the selected Machine's volume within its current region.
-- [`Fly Private Networking`](.github/workflows/fly-private-networking.yml): create a private network and manage WireGuard connections.
+- [`Fly Private Networking`](.github/workflows/fly-private-networking.yml): view or configure private networking and manage WireGuard peers and configs. Configure app services and ports in `fly.json`; apply changes through [`fly-release`](.github/workflows/fly-release.yml).
 - Optional, uncomment or dispatch when needed:
     - [`fly-merge-compose`](.github/workflows/fly-merge-compose.yml)
     - [`fly-scale-processes`](.github/actions/fly-scale-processes/action.yml)

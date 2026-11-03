@@ -12,7 +12,7 @@ jobs:
         runs-on: ubuntu-latest
         env:
             FLY_ORG: personal
-            FLY_ACCESS_MODE: "" # internal, flycast, or empty for public apps
+            FLY_ACCESS_MODE: public # internal, flycast, public; unset preserves existing access
         steps:
             - uses: actions/checkout@v6
             - uses: ./.github/actions/fly-setup
@@ -22,7 +22,7 @@ jobs:
             - uses: ./.github/actions/fly-provision
               with:
                   access-mode: ${{ env.FLY_ACCESS_MODE }}
-            - if: env.FLY_ACCESS_MODE != ''
+            - if: env.FLY_ACCESS_MODE == 'internal' || env.FLY_ACCESS_MODE == 'flycast'
               uses: ./.github/actions/fly-wireguard-config
               with:
                   operation: Vend WireGuard config

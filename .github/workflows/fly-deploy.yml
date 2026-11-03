@@ -60,7 +60,7 @@ jobs:
             - uses: ./.github/actions/fly-deploy
               with:
                   image: ${{ steps.build-image.outputs.image }}
-            - uses: ./.github/actions/fly-access-url
+            - uses: ./.github/actions/fly-networking
 
             # To set Machine counts, uncomment this step and replace counts with space-separated process=count targets.
             # - uses: ./.github/actions/fly-scale-processes

@@ -6,9 +6,9 @@ on:
             operation:
                 description: Networking Operation
                 type: string
-                default: List WireGuard peers
+                default: View app networks and IPs
             peer_name:
-                description: WireGuard peer (or app name)
+                description: WireGuard peer (required to revoke)
                 type: string
                 default: ""
     workflow_dispatch:
@@ -17,14 +17,15 @@ on:
                 description: Networking Operation
                 type: choice
                 options:
-                    - Create private network
+                    - View app networks and IPs
+                    - Configure app network
                     - List WireGuard peers
                     - Vend WireGuard config
                     - Revoke WireGuard peer
                 required: true
-                default: List WireGuard peers
+                default: View app networks and IPs
             peer_name:
-                description: WireGuard peer (or app name)
+                description: WireGuard peer (required to revoke)
                 required: false
                 default: ""
 
@@ -37,7 +38,12 @@ jobs:
             - uses: ./.github/actions/fly-setup
               with:
                   fly-api-token: ${{ secrets.FLY_API_TOKEN }}
-            - uses: ./.github/actions/fly-wireguard-config
+            - if: inputs.operation == 'Configure app network' || inputs.operation == 'View app networks and IPs'
+              uses: ./.github/actions/fly-networking
+              with:
+                  operation: ${{ inputs.operation == 'Configure app network' && 'configure' || 'view' }}
+            - if: inputs.operation != 'Configure app network' && inputs.operation != 'View app networks and IPs'
+              uses: ./.github/actions/fly-wireguard-config
               with:
                   operation: ${{ inputs.operation }}
                   peer-name: ${{ inputs.peer_name }}

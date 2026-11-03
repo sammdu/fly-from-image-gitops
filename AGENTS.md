@@ -74,11 +74,19 @@ Keep items brief. Split independent ideas into bullets and related aspects into 
     - Cold starts, `connection refused`, and app-level `502`.
     - Wrong bind addresses, private-network routing, and app boot failures.
 - Persistent Fly Volume state can outlive config changes; consider mounted data, generated files, sockets, and pid files before changing startup logic.
+- VM-wide kernel settings can be configured via `vm[].kernel_args` in `fly.json`.
+    - For Redis, `sysctl.vm.overcommit_memory=1` applies its recommended overcommit policy before containers start.
+    - Check compatibility with all containers sharing the VM and verify effective settings after deployment.
 - Map upstream image, Dockerfile, Compose, and script assumptions onto Fly.io limits before editing.
     - Build/runtime boundaries and global runtime secrets.
     - Ignored Compose volumes and release commands without volumes.
     - Proxy target selection and app-injected `FLY_*` variables.
 - For private services that need wake-on-request behavior, verify the traffic path before changing networking or readiness logic.
+- Public CNAMEs to `<app>.flycast` require private DNS and networking; recursion can return `NXDOMAIN` while direct `.flycast` lookup succeeds.
+    - For example, Socket.IO `connect_error` with `Unauthorized: TypeError: fetch failed` after HTTP `101` may indicate callback DNS failure.
+    - Test DNS and callbacks from the calling container; WebSocket upgrade does not prove authentication or event delivery.
+    - Configure internal callbacks separately from canonical URLs and tenant identity; verify supported env/config inputs.
+    - Flycast IPs survive Machine replacement; update DNS/hosts mappings after reallocation.
 - Use pre-release or deploy-blocking hooks only when failing before rollout is clearly better than letting the app boot and report health.
 - Find the application's graceful-shutdown signal handler and configure `kill_signal` accordingly.
     - Do not assume Fly.io's default `SIGINT` is appropriate for the app.
@@ -111,9 +119,11 @@ Keep items brief. Split independent ideas into bullets and related aspects into 
 
 - Consider Fly native Compose when services belong on one Machine and Compose is the clearest source of container definitions.
     - Treat it as a translation path, not Docker Compose running in the Machine.
+    - Use localhost between containers; verify support before relying on Docker networks, service DNS, or `extra_hosts`.
 - Keep Fly-specific persistence in `fly.json`; Compose volumes do not replace Fly Volumes.
     - A Fly Volume mounted over an image path hides the image's original files at that path.
 - Check rendered Compose output for flyctl-supported shapes, especially `volumes`, `ports`, `depends_on`, `healthcheck`, `secrets`, and `build`.
+    - To clear inherited lists in shared anchors, prefer `!override []`; some Compose versions lose `!reset []` through aliases.
 - Distinguish Docker Compose interpolation, `$$` escaping, `.env`, `--env-file`, `env_file`, and `environment`.
     - Verify which layer consumes and exports each value before rewriting templates.
 - Fly secrets are runtime Machine secrets; they are not automatically available to Compose rendering unless the workflow explicitly passes them into that step.
