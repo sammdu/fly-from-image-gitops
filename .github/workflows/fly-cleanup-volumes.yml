@@ -1,4 +1,4 @@
-name: Fly Cleanup Volumes
+name: Fly.io Cleanup Volumes
 
 on:
     workflow_dispatch:

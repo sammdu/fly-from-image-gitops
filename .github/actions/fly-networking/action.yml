@@ -20,6 +20,7 @@ runs:
               ACCESS_MODE: ${{ inputs.access-mode }}
           run: |
               mode="$ACCESS_MODE"
+              printf '### Fly.io Networking\n\n- App: [%s](https://fly.io/apps/%s)\n\n' "$FLY_APP" "$FLY_APP" >> "$GITHUB_STEP_SUMMARY"
               case "$mode" in
                   ""|internal|flycast|public) ;;
                   *) echo "access-mode must be internal, flycast, or public; unset preserves existing access."; exit 1 ;;
@@ -31,6 +32,7 @@ runs:
               # Existing access uses Flycast when available, otherwise the Machine's network.
               if [ -z "$mode" ]; then
                   if ! jq -e 'any(.[]; .Type == "private_v6")' <<< "$ips"; then
+                      printf -- '- Access unchanged; Machine network: `%s`.\n' "$app_network" >> "$GITHUB_STEP_SUMMARY"
                       [ "$app_network" != "default" ] || app_network=""
                       echo "FLY_NETWORK=$app_network" >> "$GITHUB_ENV"
                       exit 0
@@ -49,7 +51,7 @@ runs:
                   seed_app="net-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
                   flyctl apps create "$seed_app" --org "$FLY_ORG" --network "$FLY_NETWORK"
                   flyctl apps destroy "$seed_app" --yes
-                  echo "Created network '$FLY_NETWORK' in '$FLY_ORG'." | tee -a "$GITHUB_STEP_SUMMARY"
+                  echo "- Created network '$FLY_NETWORK' in '$FLY_ORG'." | tee -a "$GITHUB_STEP_SUMMARY"
               fi
 
               # Explicit private modes remove public IPs; observed access preserves them.
@@ -71,7 +73,9 @@ runs:
                   fi
               fi
 
-              echo "Manage or delete IPs: https://fly.io/apps/$FLY_APP" | tee -a "$GITHUB_STEP_SUMMARY"
+              printf -- '- Access mode: `%s`\n\n```text\n' "$mode" >> "$GITHUB_STEP_SUMMARY"
+              flyctl ips list | tee -a "$GITHUB_STEP_SUMMARY"
+              printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
         - if: inputs.operation != 'configure'
           name: View app networks and IPs
           shell: bash
@@ -87,7 +91,7 @@ runs:
               ips=$(flyctl ips list --json)
 
               # Report access URLs from the app's allocated public and Flycast addresses.
-              summary=("### Fly.io networking" "")
+              summary=('### Fly.io Networking' '' "- App: [$FLY_APP](https://fly.io/apps/$FLY_APP)")
               if jq -e 'any(.[]; .Type == "v4" or .Type == "v6" or .Type == "shared_v4")' <<< "$ips" > /dev/null; then
                   summary+=("- https://${FLY_APP}.fly.dev")
               fi
@@ -101,4 +105,3 @@ runs:
               printf '\nMachine private IPs\n' | tee -a "$GITHUB_STEP_SUMMARY"
               flyctl ips private | tee -a "$GITHUB_STEP_SUMMARY"
               echo '```' | tee -a "$GITHUB_STEP_SUMMARY"
-              echo "Manage or delete IPs: https://fly.io/apps/$FLY_APP" | tee -a "$GITHUB_STEP_SUMMARY"

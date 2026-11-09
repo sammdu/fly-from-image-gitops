@@ -15,34 +15,34 @@ runs:
           env:
               CONFIRM: ${{ inputs.confirm }}
           run: |
+              printf '### Fly.io Cleanup Machines\n\n- App: [%s](https://fly.io/apps/%s)\n\n' "$FLY_APP" "$FLY_APP" >> "$GITHUB_STEP_SUMMARY"
               machine_config=$(jq -r '.experimental.machine_config // empty' fly.json)
               if [ -z "$machine_config" ]; then
-                  echo "No experimental.machine_config configured."
+                  echo '- Skipped: no experimental.machine_config configured.' | tee -a "$GITHUB_STEP_SUMMARY"
                   exit 0
               fi
 
               keep=$(flyctl machine list --json | jq -r '[.[] | select(.state != "replaced")] | sort_by(.created_at) | first | .id // empty')
               if [ -z "$keep" ]; then
-                  echo "No active machine found to keep."
+                  echo '- No active Machine found to keep.' | tee -a "$GITHUB_STEP_SUMMARY"
                   exit 0
               fi
 
               remove=$(flyctl machine list --json | jq -r --arg keep "$keep" '.[] | select(.id != $keep) | .id')
               if [ -z "$remove" ]; then
-                  echo "No duplicate/replaced machines found."
+                  echo '- No extra Machines found.' | tee -a "$GITHUB_STEP_SUMMARY"
                   exit 0
               fi
 
-              echo "Keeping machine: $keep"
-              echo "Machines to remove:"
-              echo "$remove"
+              printf -- '- Keeping Machine: `%s`\n- Machines selected for removal:\n\n```text\n%s\n```\n' "$keep" "$remove" | tee -a "$GITHUB_STEP_SUMMARY"
 
               if [ "$CONFIRM" != "true" ]; then
-                  echo "Machine cleanup is disabled. Set confirm: \"true\" to destroy listed machines."
+                  echo '- Preview; enable confirm to delete the selected Machines.' | tee -a "$GITHUB_STEP_SUMMARY"
                   exit 0
               fi
 
               echo "$remove" | while read -r machine_id; do
                   [ -z "$machine_id" ] && continue
                   flyctl machine destroy "$machine_id" --force --verbose
+                  printf -- '- Deleted Machine: `%s`\n' "$machine_id" >> "$GITHUB_STEP_SUMMARY"
               done

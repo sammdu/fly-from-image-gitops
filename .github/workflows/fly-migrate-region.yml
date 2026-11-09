@@ -1,4 +1,4 @@
-name: Fly Migrate Region to Match fly.json
+name: Fly.io Migrate Region to Match fly.json
 
 on:
     workflow_dispatch:

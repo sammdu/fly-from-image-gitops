@@ -20,17 +20,20 @@ runs:
               volume=$(flyctl volumes list --json | jq -ec --arg machine "$MACHINE_ID" '.[] | select(.attached_machine_id == $machine)')
               id=$(jq -r .id <<< "$volume")
               current=$(jq -r .size_gb <<< "$volume")
+              printf '### Fly.io Resize Volume\n\n- App: [%s](https://fly.io/apps/%s)\n- Machine: `%s`\n- Volume: `%s`\n- Requested size: %s -> %s GB\n\n' "$FLY_APP" "$FLY_APP" "$MACHINE_ID" "$id" "$current" "$SIZE_GB" >> "$GITHUB_STEP_SUMMARY"
               [ "$SIZE_GB" -ne "$current" ] || exit 0
 
               # Extend in place for growth; shrinking needs a replacement volume.
               if [ "$SIZE_GB" -gt "$current" ]; then
                   flyctl volumes extend "$id" --size "$SIZE_GB" --yes
+                  printf -- '- Extended volume `%s` to %s GB. Restart its Machine if the filesystem has not grown.\n' "$id" "$SIZE_GB" >> "$GITHUB_STEP_SUMMARY"
               else
                   # Preserve the source region, snapshot policy, and encryption settings.
                   args=("$(jq -r .name <<< "$volume")" --region "$(jq -r .region <<< "$volume")" --size "$SIZE_GB" --yes --json)
                   args+=(--snapshot-retention "$(jq -r .snapshot_retention <<< "$volume")" --scheduled-snapshots="$(jq -r .auto_backup_enabled <<< "$volume")")
                   [ "$(jq -r .encrypted <<< "$volume")" = true ] || args+=(--no-encryption)
                   target=$(flyctl volumes create "${args[@]}" | jq -r .id)
+                  printf -- '- Created replacement volume: `%s`; data copy and Machine replacement follow.\n' "$target" >> "$GITHUB_STEP_SUMMARY"
 
                   echo "source=$id" >> "$GITHUB_OUTPUT"
                   echo "target=$target" >> "$GITHUB_OUTPUT"
@@ -46,7 +49,9 @@ runs:
           shell: bash
           env:
               TARGET_VOLUME: ${{ steps.resize.outputs.target }}
-          run: flyctl volumes destroy "$TARGET_VOLUME" --yes
+          run: |
+              flyctl volumes destroy "$TARGET_VOLUME" --yes
+              printf '### Fly.io Resize Volume\n\n- App: [%s](https://fly.io/apps/%s)\n- Copy failed; deleted unused target volume `%s`.\n' "$FLY_APP" "$FLY_APP" "$TARGET_VOLUME" >> "$GITHUB_STEP_SUMMARY"
         - if: steps.resize.outputs.target != ''
           uses: ./.github/actions/fly-replace-machine
           with:
@@ -56,4 +61,6 @@ runs:
           shell: bash
           env:
               SOURCE_VOLUME: ${{ steps.resize.outputs.source }}
-          run: flyctl volumes destroy "$SOURCE_VOLUME" --yes
+          run: |
+              flyctl volumes destroy "$SOURCE_VOLUME" --yes
+              printf '### Fly.io Resize Volume\n\n- App: [%s](https://fly.io/apps/%s)\n- Shrink completed; deleted source volume `%s`.\n' "$FLY_APP" "$FLY_APP" "$SOURCE_VOLUME" >> "$GITHUB_STEP_SUMMARY"

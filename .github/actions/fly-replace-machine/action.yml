@@ -18,8 +18,11 @@ runs:
               VOLUME_ID: ${{ inputs.volume-id }}
               REGION: ${{ inputs.region }}
           run: |
+              printf '### Fly.io Replace Machine\n\n- App: [%s](https://fly.io/apps/%s)\n\n```text\n' "$FLY_APP" "$FLY_APP" >> "$GITHUB_STEP_SUMMARY"
               args=("$MACHINE_ID")
               [ -z "$VOLUME_ID" ] || args+=(--attach-volume "$VOLUME_ID")
               [ -z "$REGION" ] || args+=(--region "$REGION")
-              flyctl machine clone "${args[@]}"
+              flyctl machine clone "${args[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
+              printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
               flyctl machine destroy "$MACHINE_ID" --force
+              printf -- '- Replacement completed; deleted original Machine `%s`.\n' "$MACHINE_ID" >> "$GITHUB_STEP_SUMMARY"

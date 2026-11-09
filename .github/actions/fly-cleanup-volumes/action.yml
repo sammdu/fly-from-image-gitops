@@ -25,10 +25,12 @@ runs:
               CONFIRM: ${{ inputs.confirm }}
               CLEANUP_ORPHANED: ${{ inputs.orphaned }}
           run: |
+              printf '### Fly.io Cleanup Volumes\n\n- App: [%s](https://fly.io/apps/%s)\n\n' "$FLY_APP" "$FLY_APP" >> "$GITHUB_STEP_SUMMARY"
               # Destroy one volume by id; list first to log its state.
               if [ -n "$TARGET_VOLUME" ]; then
                   flyctl volumes list --all
                   flyctl volumes destroy "$TARGET_VOLUME" --yes --verbose
+                  printf -- '- Deleted volume: `%s`\n' "$TARGET_VOLUME" >> "$GITHUB_STEP_SUMMARY"
                   exit 0
               fi
 
@@ -42,21 +44,23 @@ runs:
               candidates=$(echo "$volumes" | jq -r "$candidate_filter | .id")
 
               if [ -n "$candidates" ]; then
-                  echo "Volumes eligible for cleanup:"
-                  echo "$volumes" | jq "$candidate_filter | {id, name, state, region, size_gb, attached_machine_id, created_at}"
+                  printf -- '- Volumes selected for cleanup:\n\n```json\n' >> "$GITHUB_STEP_SUMMARY"
+                  echo "$volumes" | jq "$candidate_filter | {id, name, state, region, size_gb, attached_machine_id, created_at}" | tee -a "$GITHUB_STEP_SUMMARY"
+                  printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
               else
-                  echo "No unattached or stuck volumes found."
+                  echo '- No unattached or stuck volumes found.' | tee -a "$GITHUB_STEP_SUMMARY"
               fi
 
               if [ "$CONFIRM" = "true" ] && [ -n "$candidates" ]; then
                   echo "$candidates" | while read -r vol_id; do
                       [ -z "$vol_id" ] && continue
                       flyctl volumes destroy "$vol_id" --yes --verbose
+                      printf -- '- Deleted volume: `%s`\n' "$vol_id" >> "$GITHUB_STEP_SUMMARY"
                   done
               fi
 
               if [ "$CLEANUP_ORPHANED" != "true" ]; then
-                  [ "$CONFIRM" != "true" ] && echo "Deletion is disabled. Set confirm: \"true\" to destroy listed volumes."
+                  [ "$CONFIRM" != "true" ] && echo '- Preview; enable confirm to delete the selected volumes.' | tee -a "$GITHUB_STEP_SUMMARY"
                   exit 0
               fi
 
@@ -64,7 +68,7 @@ runs:
               attached=$(echo "$volumes" | jq -r '.[] | select(.state == "created" and .attached_machine_id) | [.id, .name, .attached_machine_id] | @tsv')
 
               if [ -z "$attached" ]; then
-                  echo "No attached volumes found."
+                  echo '- No attached volumes found.' | tee -a "$GITHUB_STEP_SUMMARY"
                   exit 0
               fi
 
@@ -77,19 +81,22 @@ runs:
                   [ "$is_configured" = "true" ] && continue
 
                   found_orphaned=true
-                  echo "Orphaned attached volume: $vol_name ($vol_id), machine: $machine_id"
+                  printf -- '- Orphaned volume: `%s` (`%s`); Machine: `%s`\n' "$vol_name" "$vol_id" "$machine_id" | tee -a "$GITHUB_STEP_SUMMARY"
 
                   if [ "$CONFIRM" != "true" ]; then
                       continue
                   fi
 
-                  flyctl volumes snapshots create "$vol_id" --verbose
+                  printf '\n```text\n' >> "$GITHUB_STEP_SUMMARY"
+                  flyctl volumes snapshots create "$vol_id" --verbose | tee -a "$GITHUB_STEP_SUMMARY"
+                  printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
                   flyctl machine destroy "$machine_id" --force --verbose
                   flyctl volumes destroy "$vol_id" --yes --verbose
+                  printf -- '- Deleted Machine `%s` and volume `%s`.\n' "$machine_id" "$vol_id" >> "$GITHUB_STEP_SUMMARY"
               done <<< "$attached"
 
               if [ "$found_orphaned" = "false" ]; then
-                  echo "No orphaned attached volumes found."
+                  echo '- No orphaned attached volumes found.' | tee -a "$GITHUB_STEP_SUMMARY"
               elif [ "$CONFIRM" != "true" ]; then
-                  echo "Deletion is disabled. Set confirm: \"true\" to snapshot and destroy listed orphaned resources."
+                  echo '- Preview; enable confirm to snapshot and delete the selected orphaned resources.' | tee -a "$GITHUB_STEP_SUMMARY"
               fi

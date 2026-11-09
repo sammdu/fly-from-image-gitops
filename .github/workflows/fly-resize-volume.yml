@@ -1,4 +1,4 @@
-name: Fly Resize Volume
+name: Fly.io Resize Volume
 
 on:
     workflow_dispatch:

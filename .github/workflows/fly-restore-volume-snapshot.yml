@@ -1,4 +1,4 @@
-name: Fly Restore Volume Snapshot
+name: Fly.io Restore Volume Snapshot
 
 on:
     workflow_dispatch:

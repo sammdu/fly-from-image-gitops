@@ -31,7 +31,8 @@ runs:
           run: |
               app_exists=$(flyctl apps list --json | jq -r --arg name "$FLY_APP" '.[] | select(.Name == $name) | .Name')
               if [ -z "$app_exists" ]; then
-                  echo "App '$FLY_APP' not found. Run fly-release first."
+                  echo "App '$FLY_APP' not found. Run Fly.io Infra first."
+                  printf '### Fly.io Deploy\n\n- App: [%s](https://fly.io/apps/%s)\n- App not found; run Fly.io Infra first.\n' "$FLY_APP" "$FLY_APP" >> "$GITHUB_STEP_SUMMARY"
                   exit 1
               fi
         - name: Start deployed Machines
@@ -44,6 +45,7 @@ runs:
           shell: bash
           run: |
               override_image="${{ inputs.image }}"
+              printf '### Fly.io Deploy\n\n- App: [%s](https://fly.io/apps/%s)\n\n' "$FLY_APP" "$FLY_APP" >> "$GITHUB_STEP_SUMMARY"
               configured_image=$(jq -r '.build.image // empty' fly.json)
               deploy_args=(--config fly.json --ha="${{ inputs.enable-ha-with-no-volumes }}" --yes --debug --verbose)
 
@@ -70,6 +72,9 @@ runs:
               else
                   flyctl deploy "${deploy_args[@]}"
               fi
+              printf -- '- Deployment completed.\n\n```text\n' >> "$GITHUB_STEP_SUMMARY"
+              flyctl machine list | tee -a "$GITHUB_STEP_SUMMARY" || echo 'Machine listing unavailable; inspect deployment logs.' | tee -a "$GITHUB_STEP_SUMMARY"
+              printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
         - name: Show recent deploy logs
           if: ${{ always() }}
           shell: bash

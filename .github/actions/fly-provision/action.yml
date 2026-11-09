@@ -14,6 +14,7 @@ runs:
           env:
               ACCESS_MODE: ${{ inputs.access-mode }}
           run: |
+              printf '### Fly.io Provision\n\n- App: [%s](https://fly.io/apps/%s)\n\n' "$FLY_APP" "$FLY_APP" >> "$GITHUB_STEP_SUMMARY"
               case "$ACCESS_MODE" in
                   ""|internal|flycast|public) ;;
                   *) echo "access-mode must be internal, flycast, or public; unset preserves existing access."; exit 1 ;;
@@ -26,7 +27,9 @@ runs:
                   if [ "$ACCESS_MODE" = "internal" ] || [ "$ACCESS_MODE" = "flycast" ]; then
                       app_args+=(--network "$FLY_NETWORK")
                   fi
-                  flyctl apps create "${app_args[@]}"
+                  printf '\n```text\n' >> "$GITHUB_STEP_SUMMARY"
+                  flyctl apps create "${app_args[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
+                  printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
               fi
 
               jq -c '.mounts // [] | .[]' fly.json | while read -r mount; do
@@ -39,7 +42,7 @@ runs:
                   volume_exists=$(flyctl volumes list --json | jq -r --arg name "$volume" '.[] | select(.name == $name) | .id')
 
                   if [ -n "$volume_exists" ]; then
-                      echo "Volume '$volume' already exists."
+                      printf -- '- Existing volume `%s`: `%s`\n' "$volume" "$volume_exists" | tee -a "$GITHUB_STEP_SUMMARY"
                       continue
                   fi
 
@@ -54,7 +57,9 @@ runs:
                   scheduled_snapshots=$(echo "$mount" | jq -r '.scheduled_snapshots // empty')
                   [ "$scheduled_snapshots" = "false" ] && volume_args+=(--scheduled-snapshots=false)
 
-                  flyctl volumes create "${volume_args[@]}"
+                  printf '\n```text\n' >> "$GITHUB_STEP_SUMMARY"
+                  flyctl volumes create "${volume_args[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
+                  printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
               done
         - uses: ./.github/actions/fly-networking
           with:

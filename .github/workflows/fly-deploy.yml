@@ -1,4 +1,4 @@
-name: Deploy App
+name: Fly.io Deploy
 
 on:
     workflow_call:
@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
     set-secrets:
-        uses: ./.github/workflows/fly-set-secrets.yml
+        uses: ./.github/workflows/fly-secrets.yml
         with:
             stage: ${{ !inputs.initial_deploy }}
         secrets: inherit

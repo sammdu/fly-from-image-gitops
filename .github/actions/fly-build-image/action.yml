@@ -33,3 +33,4 @@ runs:
               docker build --pull --file "$dockerfile" --tag "$image" "$context"
               docker push "$image"
               echo "image=$image" >> "$GITHUB_OUTPUT"
+              printf '### Fly.io Build Image\n\n- App: [%s](https://fly.io/apps/%s)\n- Built and pushed image: `%s`\n' "$FLY_APP" "$FLY_APP" "$image" >> "$GITHUB_STEP_SUMMARY"

@@ -44,7 +44,7 @@ runs:
               id=$(flyctl volumes create "$name" --snapshot-id "$SNAPSHOT_ID" --region "$region" --size "$size" --yes --json | jq -er .id)
               echo "volume-id=$id" >> "$GITHUB_OUTPUT"
               echo "machine-id=$machine" >> "$GITHUB_OUTPUT"
-              echo "Restored volume: $id" | tee -a "$GITHUB_STEP_SUMMARY"
+              printf '### Fly.io Restore Volume Snapshot\n\n- App: [%s](https://fly.io/apps/%s)\n- Snapshot: `%s`\n- Restored volume: `%s`\n' "$FLY_APP" "$FLY_APP" "$SNAPSHOT_ID" "$id" | tee -a "$GITHUB_STEP_SUMMARY"
         - if: inputs.replace == 'true'
           uses: ./.github/actions/fly-replace-machine
           with:

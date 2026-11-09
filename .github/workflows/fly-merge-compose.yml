@@ -1,4 +1,4 @@
-name: Fly Merge Compose
+name: Fly.io Merge Compose
 
 on:
     workflow_call:

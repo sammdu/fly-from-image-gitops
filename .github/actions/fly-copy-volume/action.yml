@@ -86,3 +86,4 @@ runs:
           run: |
               flyctl machine start "$MACHINE_ID"
               flyctl machine uncordon "$MACHINE_ID"
+              printf '### Fly.io Copy Volume\n\n- App: [%s](https://fly.io/apps/%s)\n- Source Machine `%s` restarted and uncordoned after the copy failed or was cancelled.\n' "$FLY_APP" "$FLY_APP" "$MACHINE_ID" >> "$GITHUB_STEP_SUMMARY"

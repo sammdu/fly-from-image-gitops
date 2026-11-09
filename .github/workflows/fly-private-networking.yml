@@ -1,4 +1,4 @@
-name: Fly Private Networking
+name: Fly.io Private Networking
 
 on:
     workflow_call:

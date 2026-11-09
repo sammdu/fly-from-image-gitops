@@ -13,4 +13,7 @@ runs:
           shell: bash
           env:
               COUNTS: ${{ inputs.counts }}
-          run: flyctl scale count $COUNTS --yes --verbose
+          run: |
+              printf '### Fly.io Scale Processes\n\n- App: [%s](https://fly.io/apps/%s)\n- Requested counts: `%s`\n\n```text\n' "$FLY_APP" "$FLY_APP" "$COUNTS" >> "$GITHUB_STEP_SUMMARY"
+              flyctl scale count $COUNTS --yes --verbose | tee -a "$GITHUB_STEP_SUMMARY"
+              printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"

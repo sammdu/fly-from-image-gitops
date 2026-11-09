@@ -1,4 +1,4 @@
-name: Fly Release
+name: Fly.io Infra
 
 on:
     workflow_dispatch:
@@ -25,7 +25,7 @@ jobs:
             - if: env.FLY_ACCESS_MODE == 'internal' || env.FLY_ACCESS_MODE == 'flycast'
               uses: ./.github/actions/fly-wireguard-config
               with:
-                  operation: Vend WireGuard config
+                  operation: Ensure WireGuard config
 
     deploy:
         needs: provision

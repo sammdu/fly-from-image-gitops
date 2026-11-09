@@ -1,5 +1,5 @@
 name: Fly.io WireGuard Config
-description: List or revoke peers, or vend a WireGuard config
+description: List or revoke peers, vend a config, or ensure a client peer exists
 
 inputs:
     operation:
@@ -22,13 +22,35 @@ runs:
               WIREGUARD_PEER_NAME: ${{ inputs.peer-name }}
           run: |
               peer="$WIREGUARD_PEER_NAME"
+              summary=('### Fly.io WireGuard' '' "- App: [$FLY_APP](https://fly.io/apps/$FLY_APP)" "- Organization: $FLY_ORG" '')
 
               case "$WIREGUARD_OPERATION" in
-                  "List WireGuard peers") flyctl wireguard list "$FLY_ORG"; exit ;;
-                  "Revoke WireGuard peer") flyctl wireguard remove "$FLY_ORG" "$peer"; exit ;;
-                  "Vend WireGuard config") ;;
+                  "List WireGuard peers")
+                      printf '%s\n' "${summary[@]}" '```text' >> "$GITHUB_STEP_SUMMARY"
+                      flyctl wireguard list "$FLY_ORG" | tee -a "$GITHUB_STEP_SUMMARY"
+                      printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
+                      exit ;;
+                  "Revoke WireGuard peer")
+                      flyctl wireguard remove "$FLY_ORG" "$peer"
+                      printf '%s\n' "${summary[@]}" "- Revoked peer: $peer" >> "$GITHUB_STEP_SUMMARY"
+                      exit ;;
+                  "Vend WireGuard config"|"Ensure WireGuard config") ;;
                   *) echo "Unknown WireGuard operation: $WIREGUARD_OPERATION"; exit 1 ;;
               esac
+
+              if [ "$WIREGUARD_OPERATION" = "Ensure WireGuard config" ]; then
+                  request=$(jq -cn --arg org "$FLY_ORG" '{query: "query($org: String!) { organization(slug: $org) { wireGuardPeers { nodes { name network } } } }", variables: {org: $org}}') || exit
+                  peers=$(curl --fail --silent --show-error https://api.fly.io/graphql -H "Authorization: Bearer $FLY_API_TOKEN" -H 'Content-Type: application/json' --data "$request") || exit
+                  existing_peer=$(jq -r --arg network "$FLY_NETWORK" '
+                      if .errors then error(.errors | tostring)
+                      else [.data.organization.wireGuardPeers.nodes[] | select((.network // "default") == $network and (.name | startswith("interactive-") | not)) | .name][0] // empty
+                      end' <<< "$peers") || exit
+                  if [ -n "$existing_peer" ]; then
+                      echo "WireGuard peer '$existing_peer' already exists on '$FLY_NETWORK'; skipping automatic vending."
+                      printf '%s\n' "${summary[@]}" "- Existing peer: $existing_peer on $FLY_NETWORK. Use its saved config; automatic vending skipped." >> "$GITHUB_STEP_SUMMARY"
+                      exit 0
+                  fi
+              fi
 
               # Keep the random suffix within Linux's 15-character interface-name limit.
               [ -n "$peer" ] || peer="${FLY_APP:0:10}-$(openssl rand -hex 2)"
@@ -41,6 +63,7 @@ runs:
               existing_peer=$(flyctl wireguard list "$FLY_ORG" --json | jq -r --arg peer "$peer" '.[] | select(.Name == $peer) | .Name')
               if [ -n "$existing_peer" ]; then
                   echo "::notice::WireGuard peer '$peer' already exists; its private key cannot be recovered. Use a different peer name or leave it unset to vend a new config."
+                  printf '%s\n' "${summary[@]}" "- Peer $peer already exists. Use its saved config or vend a new peer; private keys cannot be recovered." >> "$GITHUB_STEP_SUMMARY"
                   exit 0
               fi
 
@@ -60,7 +83,7 @@ runs:
               CONFIG_FILE: ${{ steps.peer.outputs.config-file }}
           run: |
               flyctl wireguard create "$FLY_ORG" "$FLY_PRIMARY_REGION" "$PEER_NAME" "$CONFIG_FILE" --network "$FLY_NETWORK"
-              echo "Created peer '$PEER_NAME' in '$FLY_ORG'; download the WireGuard artifact from this run." | tee -a "$GITHUB_STEP_SUMMARY"
+              printf '### Fly.io WireGuard\n\n- App: [%s](https://fly.io/apps/%s)\n- Created peer: `%s`\n- Network: `%s`\n- Download the [WireGuard artifact](%s/%s/actions/runs/%s#artifacts) and import its `.conf` file. Expires after one day.\n' "$FLY_APP" "$FLY_APP" "$PEER_NAME" "$FLY_NETWORK" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" | tee -a "$GITHUB_STEP_SUMMARY"
         - if: steps.peer.outputs.config-file != ''
           uses: actions/upload-artifact@v7
           with:

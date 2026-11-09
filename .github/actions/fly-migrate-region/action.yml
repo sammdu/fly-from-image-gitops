@@ -16,22 +16,22 @@ runs:
               CONFIRM: ${{ inputs.confirm }}
           run: |
               region="$FLY_PRIMARY_REGION"
+              printf '### Fly.io Migrate Region\n\n- App: [%s](https://fly.io/apps/%s)\n- Target region: `%s`\n\n' "$FLY_APP" "$FLY_APP" "$region" >> "$GITHUB_STEP_SUMMARY"
 
               machines=$(flyctl machine list --json | jq -r --arg region "$region" '.[] | select(.region != $region) | .id')
               if [ -z "$machines" ]; then
-                  echo "All machines already in $region."
+                  echo "- All Machines are already in $region." | tee -a "$GITHUB_STEP_SUMMARY"
                   exit 0
               fi
 
-              echo "Machines outside $region:"
-              echo "$machines"
+              printf -- '- Machines selected for migration:\n\n```text\n%s\n```\n' "$machines" | tee -a "$GITHUB_STEP_SUMMARY"
               if [ "$CONFIRM" != "true" ]; then
-                  echo "Set confirm: \"true\" to fork volumes, clone into $region, and destroy the originals."
+                  echo '- Preview; enable confirm to migrate and delete the original resources.' | tee -a "$GITHUB_STEP_SUMMARY"
                   exit 0
               fi
 
               for machine in $machines; do
-                  echo "Migrating $machine -> $region"
+                  printf -- '- Migrating Machine `%s` to `%s`.\n' "$machine" "$region" | tee -a "$GITHUB_STEP_SUMMARY"
 
                   # Stop writes before copying data into the destination region.
                   flyctl machine cordon "$machine"
@@ -46,13 +46,17 @@ runs:
                       until [ "$(flyctl volumes list --json | jq -r --arg id "$new_vol_id" '.[] | select(.id == $id).state')" = created ]; do
                           sleep 10
                       done
+                      printf -- '- Copied volume `%s` to `%s`.\n' "$vol_id" "$new_vol_id" >> "$GITHUB_STEP_SUMMARY"
                   fi
 
                   # Attach the regional copy to a replacement before deleting the originals.
                   args=("$machine" --region "$region")
                   [ -z "$new_vol_id" ] || args+=(--attach-volume "$new_vol_id")
-                  flyctl machine clone "${args[@]}"
+                  printf '\n```text\n' >> "$GITHUB_STEP_SUMMARY"
+                  flyctl machine clone "${args[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
+                  printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
 
                   flyctl machine destroy "$machine" --force
                   [ -z "$vol_id" ] || flyctl volumes destroy "$vol_id" --yes --verbose
+                  printf -- '- Migration completed; deleted original Machine `%s` and its attached volume, if present.\n' "$machine" >> "$GITHUB_STEP_SUMMARY"
               done

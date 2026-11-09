@@ -1,34 +1,83 @@
 # Fly.io GitOps App Template
 
-Lightweight template for deploying apps to [Fly.io](https://fly.io) from GitHub Actions. Configure `fly.json` and secrets, run [`fly-release`](.github/workflows/fly-release.yml) to provision the app, then use [`fly-deploy`](.github/workflows/fly-deploy.yml) for further deployments.
+Lightweight template for deploying apps to [Fly.io](https://fly.io) from GitHub Actions. Configure [fly.json](fly.json) and secrets, run [Fly.io Infra](.github/workflows/fly-infra.yml) to provision the app, then use [Fly.io Deploy](.github/workflows/fly-deploy.yml) for further deployments.
 
 For LLM agents adapting this template, read [AGENTS.md](AGENTS.md) first.
 
 ## Quick Start
 
-1. Edit `fly.json`: set `app`, `primary_region`, deployment type, and networking services and ports.
-2. Add the GitHub Actions secret `FLY_API_TOKEN`.
-3. Set `FLY_ORG` and `FLY_ACCESS_MODE` in [`fly-release`](.github/workflows/fly-release.yml). The organization defaults to `personal`; access mode defaults to `public`. Use `internal`, `flycast`, or `public`; leave it unset to preserve existing access.
-4. Map app secrets in [`fly-set-secrets`](.github/workflows/fly-set-secrets.yml).
-5. Run [`fly-release`](.github/workflows/fly-release.yml). Pass process groups needed by `release_command` in `release_dependency_process_groups`.
-6. Run [`fly-deploy`](.github/workflows/fly-deploy.yml), or uncomment its `push` trigger.
+1. Edit [fly.json](fly.json): set `app`, `primary_region`, deployment type, and networking services and ports.
+2. Add the GitHub Actions secret `FLY_API_TOKEN` in [Actions secrets settings](../../settings/secrets/actions).
+3. Set these values in [Fly.io Infra](.github/workflows/fly-infra.yml):
+    - `FLY_ORG`: `personal` by default.
+    - `FLY_ACCESS_MODE`: `internal`, `flycast`, or `public` (default); unset preserves existing access.
+4. Add app secrets to [Fly.io Secrets](.github/workflows/fly-secrets.yml).
+5. Run [Fly.io Infra](.github/workflows/fly-infra.yml). Pass process groups needed by `release_command` in `release_dependency_process_groups`.
+
+### Subsequent Deployments
+
+- Run [Fly.io Deploy](.github/workflows/fly-deploy.yml) after changing app code, images, configuration, or secrets.
+- To deploy on pushes, uncomment its `push` trigger and set the deployment branch.
+
+### Optional Deployment Steps
+
+In [Fly.io Deploy](.github/workflows/fly-deploy.yml), uncomment the steps you need:
+
+- [Fly.io Scale Processes](.github/actions/fly-scale-processes/action.yml) sets Machine counts, such as `counts: web=2 worker=1`.
+- [Fly.io Cleanup Machines](.github/actions/fly-cleanup-machines/action.yml) removes extra Machines for single-Machine apps using `experimental.machine_config`, keeping the oldest non-replaced Machine.
+- [Fly.io Cleanup Volumes](.github/actions/fly-cleanup-volumes/action.yml) removes unattached or stuck volumes after deployment.
+
+Cleanup steps preview changes unless `confirm: "true"` enables deletion.
 
 ## Deployment Types
 
-Pick one in `fly.json`:
+Pick one in [fly.json](fly.json):
 
 - Prebuilt image: `"build": { "image": "registry.example.com/app:tag" }`
 - Dockerfile: `"build": { "dockerfile": "Dockerfile", "context": "." }`
 - Docker Compose: `"build": { "compose": { "file": "compose.yaml" } }`
 - Custom multi-container Machine: `"experimental": { "machine_config": "cli-config.json" }`
 
-**Compose**: [`fly-merge-compose`](.github/workflows/fly-merge-compose.yml) merges optional upstream `urls` and `local` override(s) into `build.compose.file` (with `env-file` for non-secret interpolation, `unescape: "true"` to turn `$$` into `$`), then uploads it as an encrypted artifact since rendered config can embed secrets. Enable the `compose` job and decryption in [`fly-deploy`](.github/workflows/fly-deploy.yml). Keep persistence in `fly.json` `mounts`, not Compose volumes; flyctl builds the services.
+### Merge Multiple Compose Files
 
-**Process groups**: declare `processes`, then scope `services`, `mounts`, and `vm` to each group. Uncomment [`fly-scale-processes`](.github/actions/fly-scale-processes/action.yml) to set explicit Machine counts.
+- Configure [Fly.io Merge Compose](.github/workflows/fly-merge-compose.yml) with upstream `urls` and `local` overrides. The file name in `output` should match `build.compose.file` in [fly.json](fly.json).
+- Use `env-file` (default `compose.fly.env`) to configure environment variables and `unescape: "true"` to convert `$$` to `$`.
+- In [Fly.io Deploy](.github/workflows/fly-deploy.yml), enable the `compose` job, add it to `deploy.needs`, and enable the artifact download/decryption steps. The merged file is encrypted between workflow steps in case you choose to inject secrets.
+- Declare persistent storage in [fly.json](fly.json) `mounts`. Compose volumes do not provision Fly.io Volumes; delete existing service `volumes` entries or clear them in a local override with `volumes: !override []`.
+
+### Process Groups
+
+If your Docker image contains multiple programs you want to run simultaneously on separate Machines, declare them in the `processes` section of [fly.json](fly.json). Each group runs its own command from the same image and can scale independently. Read more about [multiple processes on Fly.io](https://docs.fly.io/launch/processes).
+
+For example, an image containing `./bin/web` and `./bin/worker` could run both while routing HTTP requests only to `web`:
+
+```json
+{
+    "processes": {
+        "web": "./bin/web",
+        "worker": "./bin/worker"
+    },
+    "http_service": {
+        "internal_port": 8080,
+        "processes": ["web"]
+    }
+}
+```
+
+Use `processes` lists in `services`, `mounts`, and `vm` to select which groups receive those settings.
+
+### Deploy Readiness
+
+- Service `checks` control traffic routing and deployment updates after a Machine starts.
+- `machine_checks` probe a started target from an ephemeral test Machine during rolling and canary deployments.
+- Checks do not start stopped Machines. Set `start-process-groups` in [Fly.io Deploy](.github/actions/fly-deploy/action.yml) to start groups before deployment checks.
+- This template sets `kill_signal` to `SIGTERM`; Fly.io defaults to `SIGINT`.
+
+See [AGENTS.md](AGENTS.md) for readiness and shutdown guidance.
 
 ## Secrets
 
-`FLY_API_TOKEN` authenticates the workflows. Map app secrets once in [`fly-set-secrets`](.github/workflows/fly-set-secrets.yml):
+Go to [Actions secrets settings](../../settings/secrets/actions) to configure your secrets (`FLY_API_TOKEN` is required), then add app secrets to [Fly.io Secrets](.github/workflows/fly-secrets.yml):
 
 ```yaml
 - uses: ./.github/actions/fly-sync-secrets
@@ -38,11 +87,11 @@ Pick one in `fly.json`:
           APP_PASSWORD=${{ secrets.APP_PASSWORD }}
 ```
 
-[`fly-release`](.github/workflows/fly-release.yml) imports secrets with `stage: false`; standalone [`fly-deploy`](.github/workflows/fly-deploy.yml) stages secrets before deploying.
+[Fly.io Infra](.github/workflows/fly-infra.yml) imports secrets with `stage: false`; standalone [Fly.io Deploy](.github/workflows/fly-deploy.yml) stages secrets before deploying.
 
 ## Volumes
 
-Add `mounts` for persistent storage; [`fly-release`](.github/workflows/fly-release.yml) creates missing volumes in `primary_region`.
+Add `mounts` in [fly.json](fly.json) for persistent storage; [Fly.io Infra](.github/workflows/fly-infra.yml) creates missing volumes in `primary_region`.
 
 ```json
 "mounts": [
@@ -56,41 +105,67 @@ Add `mounts` for persistent storage; [`fly-release`](.github/workflows/fly-relea
 ]
 ```
 
-Run [`fly-resize-volume`](.github/workflows/fly-resize-volume.yml) with a Machine ID and size in whole GB (1-500). Growth uses native extension; follow flyctl's restart instructions if needed. Shrinking copies data over private 6PN and replaces the Machine and volume. [`fly-copy-volume`](.github/actions/fly-copy-volume/action.yml) removes its temporary workers and fork.
-
-Shrinking requires downtime and changes the Machine ID. If copying fails, the original remains stopped and cordoned. If cloning fails, inspect any replacement before choosing which copy to resume. Adjust `mounts.initial_size` separately for future volumes. Bulk cleanup requires `confirm: "true"`; targeting a volume ID deletes it immediately.
-
 ## Private Apps
 
-[`fly-release`](.github/workflows/fly-release.yml) creates private apps on `app-<app name>` and issues a WireGuard config. Rerun it after changing `FLY_ACCESS_MODE` to apply access changes. [`fly-deploy`](.github/workflows/fly-deploy.yml) preserves existing IP allocations and prevents public IP allocation when the app has no public IPs. Flycast provides native suspend/wakeup; direct `.internal` access requires running Machines.
+Set `FLY_ACCESS_MODE` in [Fly.io Infra](.github/workflows/fly-infra.yml) before provisioning:
 
-Run [`Fly Private Networking`](.github/workflows/fly-private-networking.yml) with `List WireGuard peers`, `Vend WireGuard config`, or `Revoke WireGuard peer`. Vending with `peer_name` unset creates a new peer with an app prefix and random suffix, such as `samm-erpne-ce57`. Set `peer_name` for a fixed name or to revoke an exact peer. Download the `wireguard-<peer name>` artifact and import its `.conf` file. Artifacts expire after one day; CI deletes temporary configs and logs only metadata. Filenames use the first 15 peer-name characters for Linux compatibility. To replace a config, vend another, verify access, then revoke the old peer.
+| Mode | Access | Address |
+| --- | --- | --- |
+| `public` (default) | Public internet through configured services | `<app>.fly.dev` |
+| `flycast` | Private services through the Fly.io proxy, with automatic stop and start when configured | `<app>.flycast` |
+| `internal` | Direct private IPv6 (6PN) connections to running Machines | `<app>.internal:<port>` |
 
-`View app networks and IPs` is the default and shows networks, IP bindings, Machine private IPs, and access URLs. `Configure app network` and vending share the same network preparation. For existing Flycast apps, the workflow creates the client network and allocates its Flycast address if missing. Other apps use their existing Machine network. Setting `internal` during release requires the app on its app-specific network; Fly.io cannot change an existing app's Machine network.
+- For [Flycast](https://docs.fly.io/networking/flycast), configure `http_service` or `services` in [fly.json](fly.json) and bind the listener to `0.0.0.0`.
+- For [internal 6PN access](https://docs.fly.io/networking/private-networking), bind the listener to `fly-local-6pn` or `::` and connect to its listening port. Direct connections do not wake stopped Machines.
+- New private apps use the `app-<app name>` network. [Fly.io Deploy](.github/workflows/fly-deploy.yml) preserves existing IP allocations.
 
-Private modes release public IPs. Public mode adds missing shared IPv4 and public IPv6 independently; existing public addresses are reused. After IP configuration, use the dashboard link to manage or delete IPs. Switching away from Flycast releases its address on the app-specific client network; private addresses on other networks remain available for backend connections.
+### Connect Through WireGuard
 
-## Deploy Readiness
+Use a WireGuard VPN to access private apps from your computer:
 
-Service `checks` gate routing and updates after a Machine starts; `machine_checks` probe a started target via an ephemeral test Machine (rolling/canary only). Neither starts a stopped Machine; set [`fly-deploy`](.github/actions/fly-deploy/action.yml) `start-process-groups` for groups that must run deploy-time checks. `kill_signal` is `SIGTERM` (some daemons ignore Fly's `SIGINT` default). See [AGENTS.md](AGENTS.md) for the full semantics.
+1. Run [Fly.io Infra](.github/workflows/fly-infra.yml) with `flycast` or `internal` access. It vends a config when the app's client network has no peer other than `interactive-` peers.
+2. Open the completed run in [GitHub Actions](../../actions/workflows/fly-infra.yml), download `wireguard-<peer name>` under **Artifacts**, and extract the `.conf` file. Artifacts expire after one day.
+3. Import the file into your WireGuard client, activate the tunnel, and open the app's private address above.
 
-## Workflows And Actions
+If a peer already exists, use its saved config. For additional configs or peer changes, see [Private Networking](#private-networking).
 
-- [`fly-release`](.github/workflows/fly-release.yml): provision the app, networking, and volumes, vend private access, then call [`fly-deploy`](.github/workflows/fly-deploy.yml). Run for initial setup or infrastructure changes.
-- [`fly-deploy`](.github/workflows/fly-deploy.yml): sync secrets, build, and deploy application code and config changes.
-- [`fly-set-secrets`](.github/workflows/fly-set-secrets.yml): secret mapping shared by releases and standalone dispatch.
-- [`fly-resize-volume`](.github/workflows/fly-resize-volume.yml): resize the selected Machine's volume within its current region.
-- [`Fly Private Networking`](.github/workflows/fly-private-networking.yml): view or configure private networking and manage WireGuard peers and configs. Configure app services and ports in `fly.json`; apply changes through [`fly-release`](.github/workflows/fly-release.yml).
-- Optional, uncomment or dispatch when needed:
-    - [`fly-merge-compose`](.github/workflows/fly-merge-compose.yml)
-    - [`fly-scale-processes`](.github/actions/fly-scale-processes/action.yml)
-    - [`fly-cleanup-volumes`](.github/workflows/fly-cleanup-volumes.yml)
-    - [`fly-cleanup-machines`](.github/actions/fly-cleanup-machines/action.yml)
-    - [`fly-restore-volume-snapshot`](.github/workflows/fly-restore-volume-snapshot.yml)
-    - [`fly-migrate-region`](.github/workflows/fly-migrate-region.yml)
-    - [`gh-artifact-encrypt-decrypt`](.github/actions/gh-artifact-encrypt-decrypt/action.yml)
+## Maintenance Workflows
 
-Prefer uncommenting existing optional steps over adding duplicate jobs.
+### Resize Volumes
+
+To resize a volume, run [Fly.io Resize Volume](.github/workflows/fly-resize-volume.yml) with a Machine ID and size in whole GB (1-500).
+
+- Growing extends storage; follow any restart instructions.
+- Shrinking replaces the Machine and volume, causing downtime and changing Machine IDs. Inspect failures before retrying.
+
+### Clean Up Volumes
+
+To reclaim storage, run [Fly.io Cleanup Volumes](.github/workflows/fly-cleanup-volumes.yml):
+
+- `confirm`: delete; default: preview.
+- `volume`: delete immediately, ignoring `confirm`.
+- `orphaned`: snapshot, then delete volumes absent from [fly.json](fly.json) and their Machines.
+
+### Restore Volume Snapshots
+
+To recover data, run [Fly.io Restore Volume Snapshot](.github/workflows/fly-restore-volume-snapshot.yml) with `snapshot_id`. Restoration creates a volume; `replace` also replaces the original Machine.
+
+### Migrate Regions
+
+To relocate Machines and volumes, set `primary_region` in [fly.json](fly.json), then run [Fly.io Migrate Region to Match fly.json](.github/workflows/fly-migrate-region.yml). Preview first; enable `confirm` to migrate. Migration requires downtime and changes Machine IDs.
+
+### Private Networking
+
+To inspect networks or manage WireGuard peers, run [Fly.io Private Networking](.github/workflows/fly-private-networking.yml).
+
+- Choose a network or peer operation. Set `peer_name` to name or revoke a peer; leave blank to generate a name when vending.
+- To replace a config, vend another, verify access, then revoke the old peer.
+
+To change access mode, set `FLY_ACCESS_MODE` in [Fly.io Infra](.github/workflows/fly-infra.yml) and rerun it. Private modes remove public IPs; `internal` requires the `app-<app name>` Machine network, which cannot be changed.
+
+### Update Secrets
+
+To sync secrets, run [Fly.io Secrets](.github/workflows/fly-secrets.yml). `stage` enabled: next deployment; disabled: apply immediately and restart Machines.
 
 ## Documentation
 
